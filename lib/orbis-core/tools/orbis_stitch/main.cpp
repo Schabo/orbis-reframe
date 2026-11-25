@@ -166,6 +166,8 @@ int main(int argc, char** argv)
                                                       : orbiscore::FindInsvModel(rawCalib->model).focalRefW;
     for (orbiscore::LensCalibExt& e : calib.lensesExt)
         e.focalRefW = focalRefW;
+    // The model's corrections to the strings (InsvModel::radialModelsExchanged).
+    orbiscore::ApplyInsvModelCalibration(orbiscore::FindInsvModel(rawCalib->model), calib);
     std::printf("extended MEI calibration: xi=%.3f fx=%.1f (lens 0), focal reference %g%s\n",
                 calib.lensesExt[0].xi, calib.lensesExt[0].fx, focalRefW,
                 rawCalib->crop_dst_w > 0 ? "" : " (not in the file: the model's)");

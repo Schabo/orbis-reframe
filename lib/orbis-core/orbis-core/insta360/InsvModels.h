@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include <orbis-core/stitch/LensModel.h>
 #include <orbis-core/stitch/LensProfile.h>
 #include <orbis-core/stitch/SeamCorrection.h>
 
@@ -154,7 +155,26 @@ struct InsvModel {
     // v1.5.6 to v1.11.10). Empty when not known: such a file stitches as a
     // bare lens.
     std::span<const LensProfile> lensProfiles;
+
+    // The calibration strings carry each lens's radial model -- focal
+    // length (fx, fy) and radial distortion (k1-k4) -- in the other lens's
+    // place: true on the X5. Every string makes lens 0's picture 0.57 % the
+    // larger, while a chart, Insta360 Studio's All-off export and the
+    // camera's own stitched preview all make lens 1 the larger by about as
+    // much; the chart's fitted focal lengths are the file's, exchanged,
+    // within 0.05 %. Exchanged, the template stitch is 0.11 deg from
+    // Studio's All-off in the seam band (median, two clips) against 0.45,
+    // and the chart's reprojection falls on both lenses; fx alone does less
+    // (docs/formats/insta360-x5.md §5.3). False on the A1, whose string
+    // matches Studio as it stands (an exchange puts it 0.3 % off), and where
+    // unmeasured.
+    bool radialModelsExchanged;
 };
+
+// The model's corrections to its files' lens calibration
+// (InsvModel::radialModelsExchanged), in place; a no-op for any other model
+// or a calibration without two lenses.
+void ApplyInsvModelCalibration(const InsvModel& model, CameraCalibration& calib);
 
 // Every row.
 std::span<const InsvModel> InsvModels();

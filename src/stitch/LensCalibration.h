@@ -48,10 +48,18 @@ struct LensCalibration {
         return a.p[0] == b.p[0] && a.p[1] == b.p[1];
     }
     // Whether it was measured against `file` (a clip's lens calibration).
+    // A calibration measured before the reader exchanged the X5's radial
+    // models (orbiscore::InsvModel::radialModelsExchanged) holds the file's
+    // as they were read then, the other way round: it is the same camera's,
+    // so it matches too.
     bool matchesFile(const orbiscore::LensCalibExt& lens0,
                      const orbiscore::LensCalibExt& lens1) const
     {
-        return sameModel(fileLenses[0], lens0) && sameModel(fileLenses[1], lens1);
+        if (sameModel(fileLenses[0], lens0) && sameModel(fileLenses[1], lens1))
+            return true;
+        orbiscore::LensCalibExt a = lens0, b = lens1;
+        orbiscore::ExchangeRadialModels(a, b);
+        return sameModel(fileLenses[0], a) && sameModel(fileLenses[1], b);
     }
 
     bool operator==(const LensCalibration& o) const

@@ -482,6 +482,7 @@ void readCalibration(ClipMetadata& out, const orbiscore::InsvMakerNotes& notes,
                                  "focal reference, %g\n",
                          out.path.c_str(), model.name, focalRefW);
         }
+        orbiscore::ApplyInsvModelCalibration(model, calib);
         out.calibrated = true;
         for (int i = 0; i < 2; ++i) {
             out.lenses[i].calibration = calib.lensesExt[i];

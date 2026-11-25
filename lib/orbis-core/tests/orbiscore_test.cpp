@@ -113,6 +113,24 @@ void testExtendedCalibration()
     CHECK(near(e1.cx, 8073.210, 1e-3)); // back lens: offset in the side-by-side frame
     CHECK(near(e1.k[0], 0.24695949, 1e-6));
 
+    // The X5's strings carry each lens's radial model in the other's place
+    // (InsvModel::radialModelsExchanged): fx, fy and k1-k4 exchanged,
+    // nothing else moves. Not on the A1.
+    {
+        orbiscore::CameraCalibration x = c;
+        orbiscore::ApplyInsvModelCalibration(orbiscore::FindInsvModel("Insta360 X5"), x);
+        CHECK(x.lensesExt[0].fx == e1.fx && x.lensesExt[0].fy == e1.fy);
+        CHECK(x.lensesExt[1].fx == e0.fx && x.lensesExt[1].fy == e0.fy);
+        CHECK(x.lensesExt[0].k[0] == e1.k[0] && x.lensesExt[0].k[3] == e1.k[3] &&
+              x.lensesExt[1].k[0] == e0.k[0] && x.lensesExt[1].k[3] == e0.k[3]);
+        CHECK(x.lensesExt[0].cx == e0.cx && x.lensesExt[0].p[0] == e0.p[0] &&
+              x.lensesExt[0].s[0] == e0.s[0] && x.lensesExt[0].yaw == e0.yaw &&
+              x.lensesExt[1].cx == e1.cx && x.lensesExt[1].tz == e1.tz);
+        orbiscore::CameraCalibration a = c;
+        orbiscore::ApplyInsvModelCalibration(orbiscore::FindInsvModel("Antigravity A1"), a);
+        CHECK(a.lensesExt[0].fx == e0.fx && a.lensesExt[1].fx == e1.fx);
+    }
+
     // Tolerates the string embedded in a longer buffer (as it sits in a
     // protobuf field in the trailer, between binary framing bytes).
     orbiscore::CameraCalibration c2;

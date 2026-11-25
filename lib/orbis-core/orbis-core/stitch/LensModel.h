@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include <utility>
 #include <vector>
 
 // What the stitch knows about a camera's lenses, whichever camera it is:
@@ -107,6 +108,17 @@ struct LensMask {
     // large value where both are clear. Only for a non-empty mask.
     double clearRadAt(double azRad) const;
 };
+
+// Exchanges the two lenses' radial models: focal length (fx, fy) and
+// radial distortion (k1-k4). What a camera whose strings carry each lens's
+// in the other's place needs (orbiscore::InsvModel::radialModelsExchanged).
+inline void ExchangeRadialModels(LensCalibExt& a, LensCalibExt& b)
+{
+    std::swap(a.fx, b.fx);
+    std::swap(a.fy, b.fy);
+    for (int i = 0; i < 4; ++i)
+        std::swap(a.k[i], b.k[i]);
+}
 
 // A camera's lenses' calibrations, lens 0 first.
 struct CameraCalibration {

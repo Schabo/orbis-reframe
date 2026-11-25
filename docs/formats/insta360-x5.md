@@ -741,37 +741,52 @@ trailing token `flag`. Each lens block ends in `w h lensType` (`10752 5376
   −0.06 to −0.08 %, pitch +0.3 to +0.4°; the offset on other frames of the
   clip drops from 0.16–0.18° (rotation only) to 0.04–0.10°. The app
   measures it per clip from the video.
-- **The two lenses' focal lengths look exchanged** ⚠️ (2026-11-25). Every
-  string (fields 5, 53, 54, 111) makes lens 0's picture the larger: 0.57 %
-  at the seam in field 111, the same in field 54 and in field 53's
-  `radius` (which is field 111's image radius at 100.4°, nothing new).
-  Ground truth and Insta360's own stitches all make lens 1 the larger
-  instead:
+- **The strings carry each lens's radial model in the other lens's
+  place** ✅ (2026-11-25/26): the focal length (fx, fy) and the radial
+  distortion (k1–k4). Every string (fields 5, 53, 54, 111) makes lens 0's
+  picture the larger: 0.57 % at the seam in field 111, the same in field 54
+  and in field 53's `radius` (which is field 111's image radius at 100.4°,
+  nothing new). Ground truth and Insta360's own stitches all make lens 1
+  the larger instead:
   - The chart fit (bare `No_Lensprotector/…_008`) finds fx 3092.7 for lens 0
     and 3105.8 for lens 1 (video px); the file has 3104.1 and 3092.3, the
     same two values within 0.05 % in the other lens's place.
   - Scored on that chart (reprojection rms, lens 0 / lens 1, board pose
     free per lens): the file as read 0.48 / 0.76 px; fx fy exchanged 0.36 /
     0.63; fx fy and k1–k4 exchanged 0.31 / 0.58; the chart fit 0.21 / 0.20.
-    No other reading tried does better: p or s dropped, swapped or
-    sign-flipped, tokens 22–23 as extra thin-prism terms, the centres
+    In the joint fit of both lenses with the file's radial models held:
+    0.47 / 0.51 as read, 0.34 / 0.34 with fx exchanged, 0.29 / 0.31 with
+    fx and k. No other reading tried does better: p or s dropped, swapped
+    or sign-flipped, tokens 22–23 as extra thin-prism terms, the centres
     mirrored or transposed, field 54's centres or angles (all 0.47-1.28 on
     one lens or both).
-  - Against Insta360 Studio's All-off export of `_086` (frame 0, 2560 wide),
-    per-lens image radius Studio / ours is +0.30 % / −0.38 % as read and
-    −0.07 % / −0.03 % with fx fy exchanged. Against the camera's own
-    stitched thumbnail (record 2) of `_086`: +0.32 % / −0.10 % as read,
-    −0.03 % / +0.27 % exchanged. On a second camera (`fliperama/…_042`,
-    whose strings make lens 1 the larger): −0.24 % / +0.37 % as read,
-    −0.07 % / +0.17 % exchanged, with smaller flow residuals.
-  Method: dense optical flow from our render to the other stitch on far
-  content (above the horizon, 15° clear of the seam), a rotation and an
-  image-radius scale fitted per lens; checked by recovering an injected
-  3° lens-1 turn to 0.08° and a 0.5 % radius change to 0.01 %.
-  The exchange hardly moves the seam itself (offset on six riding clips
-  changes by −0.02 to +0.05°): the two lenses' errors push seam content the
-  same way. What it changes is the picture away from the seam, up to
-  ~0.5° near 90° off each lens's axis. Not applied in the app.
+  - `stitch_bench` against Studio's All-off (`192900` 125-135 s / `_086`
+    0-10 s, the new stitcher's template: no flow, colour blend or
+    capture-time correction): seam-band geometry median 0.45 / 0.45° as
+    read, 0.15 / 0.15° with fx exchanged, **0.11 / 0.11°** with fx and k;
+    band p95 0.67 / 0.67 -> 0.20 / 0.19°; body median 0.22 / 0.20 -> 0.12 /
+    0.11°; band PSNR (gain-matched) 23.3 / 21.1 -> 29.4 / 26.8 dB; per-lens
+    radial error at 50-80° −0.25 / +0.21° -> +0.04 / −0.09° (`192900`).
+    The app's new stitcher with its seam flow and colour blend: band median
+    0.45 / 0.49 -> 0.16 / 0.18°, band PSNR 21.3 / 21.6 -> 22.7 / 22.6 dB.
+    Seam sharpness unchanged.
+  - Against Studio's `_086` frame 0 alone, per-lens image radius Studio /
+    ours +0.30 % / −0.38 % as read, −0.07 % / −0.03 % with fx fy
+    exchanged; against the camera's own thumbnail (record 2) +0.32 % /
+    −0.10 % and −0.03 % / +0.27 %. A second camera (`fliperama/…_042`,
+    whose strings make lens 1 the larger) moves towards its own thumbnail
+    the same way: −0.24 % / +0.37 % as read, −0.07 % / +0.17 % exchanged.
+    Method: dense optical flow from our render to the other stitch on far
+    content (above the horizon, 15° clear of the seam), a rotation and an
+    image-radius scale fitted per lens; checked by recovering an injected
+    3° lens-1 turn to 0.08° and a 0.5 % radius change to 0.01 %.
+  The seam offset the per-clip fit measures (lens to lens, at the seam)
+  hardly moves (six riding clips, −0.02 to +0.05° with fx alone): the two
+  lenses' errors pushed seam content the same way, towards lens 0, which
+  only a reference shows. The app exchanges them for the X5
+  (`orbiscore::InsvModel::radialModelsExchanged`); not the A1, whose
+  string matches Studio as it stands. A chart calibration saved before
+  the exchange still matches its camera's files.
 - **Insta360's stitches turn lens 1 against the file's calibration**,
   as the per-clip seam fit does. In seam-correction terms (lens 1 yaw /
   pitch): Studio's All-off of `_086` +0.41° / +0.37°, the camera's

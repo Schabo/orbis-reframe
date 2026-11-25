@@ -1722,6 +1722,16 @@ void testLensCalibrationStore()
     orbiscore::LensCalibExt other = cal.fileLenses[1];
     other.fx += 1; // a file with another calibration: not for it
     CHECK(!lenscal::ForClip("IAHEA25088AYDQ", 0, cal.fileLenses[0], other));
+    // Measured before the reader exchanged the X5's radial models: the file
+    // as read now has them the other way round, and it still matches.
+    cal.fileLenses[0].k[0] = 0.23; // each lens's own, as read then
+    cal.fileLenses[1].k[0] = 0.25;
+    CHECK(lenscal::Save(cal, &err));
+    orbiscore::LensCalibExt now0 = cal.fileLenses[0], now1 = cal.fileLenses[1];
+    orbiscore::ExchangeRadialModels(now0, now1); // the file as read now
+    CHECK(lenscal::ForClip("IAHEA25088AYDQ", 0, now0, now1) == cal);
+    now1.fx += 1;
+    CHECK(!lenscal::ForClip("IAHEA25088AYDQ", 0, now0, now1));
     QDir(lenscal::StoreDir()).removeRecursively();
     QStandardPaths::setTestModeEnabled(false);
 }

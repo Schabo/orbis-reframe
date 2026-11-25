@@ -200,6 +200,13 @@ Markers as in [`README.md`](README.md).
   calibration of an A1 would. ⚠️ **One unit measured**: if the offsets
   are this drone's own calibration error rather than the model's, another
   A1 needs other values; a clip from a second A1 would tell.
+- ✅ **The focal lengths stand as written** (2026-11-25), unlike the
+  X5's, whose strings carry each lens's in the other's place (X5 §5.3).
+  `_021` at 0 s against Studio's export, per-lens image radius Studio /
+  ours away from the seam (flow on far content, a rotation and a radius
+  scale fitted per lens): −0.03 % / +0.04 % as the app reads it, +0.31 % /
+  −0.34 % with fx fy exchanged. The A1's string makes lens 0 the larger
+  too (fx 3754.8 against 3742.5), and Studio keeps it so.
 - ✅ The lenses are **71 mm apart** (lens 1 `tz` −0.0711; X5: 32 mm), lens 0
   in front along its own axis as on the X5: the depth-aware seam lines up
   houses, poles and wires along the horizon when the drone flies low

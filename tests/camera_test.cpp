@@ -802,8 +802,11 @@ void testIntervalPhotos(const std::filesystem::path& dir)
     }
     CHECK(clip->fps == 30.0 && clip->durationMs == 200 && clip->lensWidth == 128 &&
           clip->lensHeight == 128);
+    // The extended string's, with the X5's radial models exchanged
+    // (InsvModel::radialModelsExchanged): lens 0 gets lens 1's focal length.
     CHECK(clip->calibrated && clip->lenses[0].calibration.focalRefW == 5376 &&
-          std::abs(clip->lenses[0].calibration.fx - 4294.03) < 1e-6); // the extended string's
+          std::abs(clip->lenses[0].calibration.fx - 4277.66) < 1e-6 &&
+          std::abs(clip->lenses[1].calibration.fx - 4294.03) < 1e-6);
     CHECK(std::abs(clip->timelapseIntervalSec - 10.374636) < 1e-6 && // the median gap
           std::abs(clip->captureScale - 30 * clip->timelapseIntervalSec) < 1e-9);
     CHECK(clip->recordedLocal == "2026-08-15T08:11:08" && clip->missingFirst.empty());
