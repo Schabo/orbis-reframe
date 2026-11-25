@@ -359,8 +359,10 @@ The reasons a measurement gives:
 
 Changing **Lens guards** or **Lens calibration** measures the clip's file
 again, because the alignment depends on the lens model. Projects from orbis-reframe 0.5 and
-older measured only how the back lens is turned; their clips are measured
-again when the project opens.
+older measured only how the back lens is turned, and projects from 0.10
+and older measured on the X5's lens model as the camera's file reads
+before orbis-reframe corrected it; their clips are measured again when the
+project opens.
 
 ## Lens colour
 

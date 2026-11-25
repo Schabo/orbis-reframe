@@ -1466,8 +1466,9 @@ void testMeasurementsWritten()
     CHECK(Autosave::hasRecovery(file)); // rewritten after the file
 }
 
-// A seam fine-tune measured by the older estimator (lens-1 rotation only, no
-// "method") isn't read back: the clip is measured again.
+// A seam fine-tune measured by an older estimator (lens-1 rotation only, no
+// "method"; or on the X5's lens model before the exchange, method 2) isn't
+// read back: the clip is measured again.
 void testOldSeamMeasurement()
 {
     QTemporaryDir tmp;
@@ -1506,6 +1507,24 @@ void testOldSeamMeasurement()
     orbiscore::SeamCorrection seam;
     CHECK(!q.timeline()->sourceSeamCorrection(a, 2, seam) && seam == orbiscore::SeamCorrection{});
     CHECK(q.timeline()->clipAt(0).seamAdjustGuard == -1);
+
+    // Measured on the X5's lens model before its radial models were
+    // exchanged ("method" 2): measured again too.
+    clip["seamAdjust"] = QJsonObject{{"deg", QJsonArray{-0.5, 0.25, 0.1}},
+                                     {"centre", QJsonArray{0.001, 0.0}},
+                                     {"scale", 1.001},
+                                     {"lensGuard", 2},
+                                     {"method", 2}};
+    clips[0] = clip;
+    timeline["clips"] = clips;
+    doc["timeline"] = timeline;
+    CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(QJsonDocument(doc).toJson());
+    f.close();
+    Project r;
+    CHECK(r.load(file) && r.timeline()->count() == 1);
+    CHECK(!r.timeline()->sourceSeamCorrection(a, 2, seam));
+    CHECK(r.timeline()->clipAt(0).seamAdjustGuard == -1);
 }
 
 // A lens colour from another estimator (a "method" this build doesn't know)

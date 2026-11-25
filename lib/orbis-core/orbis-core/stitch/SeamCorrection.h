@@ -26,8 +26,12 @@ struct SeamCorrection {
     bool operator==(const SeamCorrection&) const = default;
 };
 
-// The estimator that measured a stored correction. A correction from an
-// older one (rotation only) is measured again rather than used.
-constexpr int kSeamCorrectionMethod = 2;
+// The estimator that measured a stored correction, and on what lens model.
+// A correction from an older one is measured again rather than used: 1
+// measured lens 1's rotation only; 2 measured on the X5's radial models as
+// the strings have them, before the reader exchanged them
+// (InsvModel::radialModelsExchanged) -- a correction for the old reading,
+// which makes the seam's worst stretches worse on the new one.
+constexpr int kSeamCorrectionMethod = 3;
 
 } // namespace orbiscore
