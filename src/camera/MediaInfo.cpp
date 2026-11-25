@@ -131,9 +131,10 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
                     out.lensFiles.end())
                 out.lensFiles.push_back(l.source.path);
         out.captureMode = clip->captureMode;
-        if (clip->parts.size() > 1)
+        if (clip->parts.size() > 1) // in ms end to start, as stitch::ProbeClip
             for (const Part& p : clip->parts)
-                out.parts.push_back({p.path, p.startUs / 1000, p.durationUs / 1000});
+                out.parts.push_back({p.path, p.startUs / 1000,
+                                     (p.startUs + p.durationUs) / 1000 - p.startUs / 1000});
         out.clipDurationMs = clip->durationMs;
         out.missingFirst = clip->missingFirst;
         out.mayContinueIn = clip->mayContinueIn;

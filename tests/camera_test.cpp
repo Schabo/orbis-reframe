@@ -13,6 +13,7 @@
 #include "ClipMetadata.h"
 #include "MediaInfo.h"
 #include "NativeStitchSource.h"
+#include "ProbeClip.h"
 #include <orbis-core/stab/GyroStabilizer.h>
 #include <orbis-core/media/FisheyeDemux.h>
 #include <orbis-core/insta360/InsvTrailer.h>
@@ -816,6 +817,17 @@ void testIntervalPhotos(const std::filesystem::path& dir)
             inOrder = inOrder && n < 6 && std::abs(mean(a) - (40 + 30 * order[n])) < 3 &&
                       std::abs(mean(b) - (40 + 30 * order[n])) < 3;
         CHECK(err.empty() && inOrder && n == 6);
+    }
+    // Probed for the media pool, the photos follow on to the ms: no gap.
+    {
+        stitch::ClipProbe probe;
+        CHECK(stitch::ProbeClip(photos[2], probe, err) && probe.clip_path == photos[0] &&
+              probe.parts.size() == 6);
+        bool joined = true;
+        for (size_t i = 1; i < probe.parts.size(); ++i)
+            joined = joined && probe.parts[i].start_ms ==
+                                   probe.parts[i - 1].start_ms + probe.parts[i - 1].duration_ms;
+        CHECK(joined && probe.parts.back().start_ms + probe.parts.back().duration_ms == 200);
     }
     // Any photo of it names the first; from a later one, the series from there.
     CHECK(camera::ClipFileOf(photos[4], &err) == photos[0]);

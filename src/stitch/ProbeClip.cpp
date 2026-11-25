@@ -20,9 +20,13 @@ bool ProbeClip(const std::string& clip_path, ClipProbe& out, std::string& err)
             std::find(out.other_files.begin(), out.other_files.end(), l.source.path) ==
                 out.other_files.end())
             out.other_files.push_back(l.source.path);
+    // In ms each part ends where the next starts, as in µs: its length is
+    // its end's ms less its start's, not its µs length rounded on its own
+    // (a gap of a ms in between would read as a part not found).
     if (clip->parts.size() > 1)
         for (const camera::Part& p : clip->parts)
-            out.parts.push_back({p.path, p.startUs / 1000, p.durationUs / 1000});
+            out.parts.push_back({p.path, p.startUs / 1000,
+                                 (p.startUs + p.durationUs) / 1000 - p.startUs / 1000});
     out.width = clip->lensWidth;
     out.height = clip->lensHeight;
     out.fps = clip->fps;
