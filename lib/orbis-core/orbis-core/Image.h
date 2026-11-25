@@ -27,6 +27,16 @@ struct Image {
         h = height;
         rgb.assign(static_cast<std::size_t>(width) * height * 3, 0);
     }
+    // Sized as alloc, for a picture about to be written whole: the bytes it
+    // holds aren't cleared, and a buffer already that size isn't touched
+    // (zeroing a 72 MP frame for every photo of a series costs as much as
+    // converting it).
+    void allocForWrite(int width, int height)
+    {
+        w = width;
+        h = height;
+        rgb.resize(static_cast<std::size_t>(width) * height * 3);
+    }
 
     bool empty() const { return w <= 0 || h <= 0 || rgb.empty(); }
 

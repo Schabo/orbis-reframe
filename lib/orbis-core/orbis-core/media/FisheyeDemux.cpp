@@ -54,28 +54,38 @@ bool FisheyeDemux::open(const std::vector<ClipPart>& parts, std::string& err)
     return m_demux.open(parts, CpuDecoderSetup, err);
 }
 
+void FisheyeDemux::cropInto(int lens, const Image& img, Image& out) const
+{
+    const LensRect& r = m_rect[lens];
+    if (r.x == 0.0 && r.y == 0.0 && r.w == 1.0 && r.h == 1.0) {
+        out = img;
+        return;
+    }
+    const int x = static_cast<int>(std::lround(r.x * img.w));
+    const int y = static_cast<int>(std::lround(r.y * img.h));
+    const int w = std::min(static_cast<int>(std::lround(r.w * img.w)), img.w - x);
+    const int h = std::min(static_cast<int>(std::lround(r.h * img.h)), img.h - y);
+    out.allocForWrite(std::max(w, 0), std::max(h, 0)); // every row copied below
+    for (int row = 0; row < out.h; ++row)
+        std::memcpy(out.rgb.data() + static_cast<size_t>(row) * out.w * 3,
+                    img.rgb.data() + (static_cast<size_t>(y + row) * img.w + x) * 3,
+                    static_cast<size_t>(out.w) * 3);
+}
+
 void FisheyeDemux::crop(int lens, Image& img) const
 {
     const LensRect& r = m_rect[lens];
     if (r.x == 0.0 && r.y == 0.0 && r.w == 1.0 && r.h == 1.0)
         return;
-    const int x = static_cast<int>(std::lround(r.x * img.w));
-    const int y = static_cast<int>(std::lround(r.y * img.h));
-    const int w = std::min(static_cast<int>(std::lround(r.w * img.w)), img.w - x);
-    const int h = std::min(static_cast<int>(std::lround(r.h * img.h)), img.h - y);
     Image out;
-    out.alloc(std::max(w, 0), std::max(h, 0));
-    for (int row = 0; row < out.h; ++row)
-        std::memcpy(out.rgb.data() + static_cast<size_t>(row) * out.w * 3,
-                    img.rgb.data() + (static_cast<size_t>(y + row) * img.w + x) * 3,
-                    static_cast<size_t>(out.w) * 3);
+    cropInto(lens, img, out);
     img = std::move(out);
 }
 
 bool FisheyeDemux::convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out,
                            std::string& err)
 {
-    out.alloc(frm->width, frm->height);
+    out.allocForWrite(frm->width, frm->height); // sws_scale writes every byte
 
     // The camera's HEVC decodes as a deprecated full-range JPEG pixel format
     // (yuvj420p); swscale wants the plain format, with the range set apart.
@@ -153,10 +163,11 @@ bool FisheyeDemux::readNextPair(Image& out0, Image& out1, FramePts* pts, std::st
     AVFrame* f1 = nullptr;
     if (!m_demux.readNextPair(f0, f1, pts, err))
         return false;
-    bool ok = convert(f0, lens(0), out0, err);
-    if (ok && f1->data[0] == f0->data[0]) // both lenses in one frame: converted once
-        out1 = out0;
-    else if (ok)
+    // Both lenses in one frame: converted once, into a frame kept for the
+    // next, and each lens cut from it.
+    const bool shared = f1->data[0] == f0->data[0];
+    bool ok = convert(f0, lens(0), shared ? m_frame : out0, err);
+    if (ok && !shared)
         ok = convert(f1, lens(1), out1, err);
     av_frame_free(&f0);
     av_frame_free(&f1);
@@ -164,6 +175,11 @@ bool FisheyeDemux::readNextPair(Image& out0, Image& out1, FramePts* pts, std::st
         out0 = {};
         out1 = {};
         return false;
+    }
+    if (shared) {
+        cropInto(0, m_frame, out0);
+        cropInto(1, m_frame, out1);
+        return true;
     }
     crop(0, out0);
     crop(1, out1);

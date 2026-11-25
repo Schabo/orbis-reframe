@@ -1629,7 +1629,8 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
 }
 
 Frame NativeStitchSource::readCpuDecode() {
-    orbiscore::Image a, b;
+    orbiscore::Image& a = cpu_lens_[0];
+    orbiscore::Image& b = cpu_lens_[1];
     orbiscore::FramePts pts;
     std::string err;
     if (!readPairCpu(a, b, &pts, err)) {

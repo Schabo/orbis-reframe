@@ -90,7 +90,9 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
 1. **Demux and decode** (`orbis-core/media/FisheyeDemux`, `orbis-core/media/VulkanVideoDecoder`): the
    two fisheye lens streams, decoded on the GPU through FFmpeg's Vulkan
    hwaccel into NV12 (8-bit) or P010 (10-bit) images, with a CPU decode
-   fallback when the GPU path can't be used. For playback only, the
+   fallback when the GPU path can't be used. A series of photos (JPEG,
+   which Vulkan video can't decode) is read ahead on the CPU, several
+   photos at once (`LensDemuxer`). For playback only, the
    picture can come from the camera's low-res proxy instead
    (`PreviewStitchConfig::proxy`, the app setting *Play from preview
    files*): both lenses in one stream, decoded once, each lens a rectangle

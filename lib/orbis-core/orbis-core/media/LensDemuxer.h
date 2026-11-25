@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -24,7 +25,10 @@
 // the target is in. A part's files are opened when the clip first needs
 // them, and no more than kMaxOpenFiles stay open (the least recently used
 // closed, never the part being read's), so a series of a thousand photos
-// doesn't hold a thousand files.
+// doesn't hold a thousand files. A series of stills (ClipPart::stillUs) is
+// read ahead instead, a few photos at once on threads of its own, each with
+// a decoder and the file of its own: a photo is one picture, decoded alone,
+// and an X5 photo takes a third of a second.
 // Two lenses in one stream (a camera's proxy: both fisheyes side by side)
 // share one decoder: each pair hands out its frame twice (a new reference),
 // and each lens's LensSource::rect says which part of it is that lens's.
@@ -82,7 +86,7 @@ public:
     using DecoderSetup =
         std::function<bool(const AVStream* st, const AVCodec* dec, AVCodecContext* ctx, std::string& err)>;
 
-    LensDemuxer() = default;
+    LensDemuxer(); // in the .cpp, where StillsAhead is whole
     ~LensDemuxer();
     LensDemuxer(const LensDemuxer&) = delete;
     LensDemuxer& operator=(const LensDemuxer&) = delete;
@@ -101,7 +105,8 @@ public:
     // seek or a read first reaches it, which then fails as open() would
     // (the part and file named) if it doesn't open or match.
     bool open(const std::vector<ClipPart>& parts, const DecoderSetup& setup, std::string& err);
-    // The most files kept open at once (more when one part has more).
+    // The most files kept open at once (more when one part has more), the
+    // stills' read-ahead's own besides.
     static constexpr int kMaxOpenFiles = 8;
     // The files open now; for tests.
     int openFileCount() const;
@@ -234,6 +239,18 @@ private:
     void dropUnpaired(int lens, int64_t otherUs);
     AVFrame* popFront(int lens);
 
+    // A series of stills: decoded ahead on threads of their own (the class
+    // comment). m_stillNext is the next part a read hands out (its size at
+    // the end), m_stillPeeked a frame peekFrame looked at, still to hand out.
+    class StillsAhead;
+    std::unique_ptr<StillsAhead> m_stillsAhead;
+    DecoderSetup m_setup; // open()'s, for the read-ahead's decoders
+    size_t m_stillNext = 0;
+    AVFrame* m_stillPeeked = nullptr;
+    // The next still, from the read-ahead (started here at first). False with
+    // `err` empty at the end, set when the part can't be read (named as
+    // ensurePart names it; the next read tries it again).
+    bool nextStill(AVFrame*& out, std::string& err);
     // Opened as the clip needs them, from const keyframe lookups too: a
     // cache of the files, not the reading state.
     mutable std::vector<Input> m_inputs;

@@ -781,8 +781,9 @@ void testFrameState()
 // A series of photos (an Insta360 Interval series: JPEGs, both lenses side
 // by side), one a part: each photo at its part's start to the microsecond,
 // whatever the image demuxer's own rate (25 a second for jpeg_pipe); on through all of them, seeks into
-// any, with only a few files open at once; a photo gone or unlike the first
-// fails when it is reached, as open() would, and the rest still reads.
+// any, read ahead with no file left open; a photo gone or unlike the first
+// fails when it is read, named as open() would name it, and the rest still
+// reads.
 void testPhotoSeries(const std::string& dir)
 {
     std::printf("  a series of photos, one a part: their times, seeks, few files open\n");
@@ -852,7 +853,7 @@ void testPhotoSeries(const std::string& dir)
     CHECK(d.nearestKeyframeMs(orbiscore::MsOfUs(startUs(7)) + 5) == orbiscore::MsOfUs(startUs(7)));
     CHECK(d.nearestKeyframeMs(orbiscore::MsOfUs(startUs(7)) + 25) == orbiscore::MsOfUs(startUs(8)));
 
-    std::printf("  ... no more files open than kMaxOpenFiles, through all and back\n");
+    std::printf("  ... read ahead: no file left open, through all and back\n");
     {
         orbiscore::LensDemuxer demux;
         CHECK(demux.open(parts, [](const auto*, const auto*, auto*, std::string&) { return true; },
@@ -867,11 +868,12 @@ void testPhotoSeries(const std::string& dir)
             av_frame_free(&f0);
             av_frame_free(&f1);
         }
-        CHECK(err.empty() && read == kPhotos && most == orbiscore::LensDemuxer::kMaxOpenFiles);
+        // The read-ahead opens each photo as it decodes it and closes it.
+        CHECK(err.empty() && read == kPhotos && most == 2);
         CHECK(demux.seekTo(0, err) && demux.readNextPair(f0, f1, nullptr, err));
         av_frame_free(&f0);
         av_frame_free(&f1);
-        CHECK(demux.openFileCount() <= orbiscore::LensDemuxer::kMaxOpenFiles);
+        CHECK(demux.openFileCount() == 2);
     }
 
     std::printf("  ... a photo gone since open: an error when reached, the rest reads\n");
@@ -887,7 +889,10 @@ void testPhotoSeries(const std::string& dir)
         CHECK(!g.readNextPair(a, b, nullptr, err));
         CHECK(err.find("(part 11)") != std::string::npos && err.find(paths[10]) != std::string::npos);
         err.clear();
-        CHECK(!g.seekTo(orbiscore::MsOfUs(startUs(10)), err) && err.find("(part 11)") != std::string::npos);
+        CHECK(!g.readNextPair(a, b, nullptr, err) && err.find("(part 11)") != std::string::npos);
+        err.clear(); // a seek to it opens nothing; its read says why
+        CHECK(g.seekTo(orbiscore::MsOfUs(startUs(10)), err) && !g.readNextPair(a, b, nullptr, err) &&
+              err.find("(part 11)") != std::string::npos);
         err.clear();
         CHECK(g.seekTo(orbiscore::MsOfUs(startUs(12)), err) && next(g) == 12);
         std::filesystem::rename(paths[10] + ".gone", paths[10]);
@@ -902,7 +907,8 @@ void testPhotoSeries(const std::string& dir)
         withOdd[5].lenses = {{odd, 0, left}, {odd, 0, right}};
         orbiscore::FisheyeDemux g;
         CHECK(g.open(withOdd, err));
-        CHECK(!g.seekTo(orbiscore::MsOfUs(startUs(5)), err));
+        orbiscore::Image a, b;
+        CHECK(g.seekTo(orbiscore::MsOfUs(startUs(5)), err) && !g.readNextPair(a, b, nullptr, err));
         CHECK(err.find("isn't coded like") != std::string::npos && err.find("(part 6)") != std::string::npos &&
               err.find(odd) != std::string::npos);
         err.clear();

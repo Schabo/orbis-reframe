@@ -12,9 +12,9 @@ The X5's **Interval photos** open as a timelapse: add any photo of a
 series (`IMG_….insp`), or the folder, and the whole series comes in as one
 clip, a photo a frame at 30 frames a second, in the order they were taken.
 The clip's speed (see [The timeline](timeline.md)) sets how fast the photos
-go by. Each photo is a 72-megapixel picture decoded on the processor, so
-the series plays a few photos a second rather than smoothly; exporting it
-works at full quality. It isn't [stabilized](stabilization.md) yet. Single
+go by. Each photo is a 72-megapixel picture decoded on the processor,
+several at once, so the series plays at about ten photos a second rather
+than its full 30; exporting it works at full quality. It isn't [stabilized](stabilization.md) yet. Single
 photos and the other photo modes don't open yet.
 
 The **Insta360 X6** is supported experimentally: its clips open, stitch,

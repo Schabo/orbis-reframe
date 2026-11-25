@@ -91,8 +91,11 @@ private:
     bool convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out, std::string& err);
     // Cuts lens `lens`'s part (m_rect) out of `img`; a whole frame stays.
     void crop(int lens, Image& img) const;
+    // Lens `lens`'s part of `from` into `out` (`from` itself: a whole frame).
+    void cropInto(int lens, const Image& from, Image& out) const;
 
     LensDemuxer m_demux;
+    Image m_frame; // both lenses' frame converted, kept for the next (readNextPair)
     SwsContext* m_sws = nullptr;
     int m_swsSrcFullRange = -1; // last range fed to sws_setColorspaceDetails (-1 = unset)
     int m_swsCoefId = -1;       // last SWS_CS_* matrix id set

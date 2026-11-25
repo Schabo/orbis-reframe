@@ -457,6 +457,9 @@ private:
     // (forgetSeamFrames) -- and a seek measures nothing before its frame.
     bool stills_ = false;
     void forgetSeamFrames();
+    // The CPU decode's lens pictures, kept from frame to frame: a fresh
+    // pair is two 106 MB buffers for each photo of an X5 series.
+    orbiscore::Image cpu_lens_[2];
     // The next lens pair decoded and measured, nothing stitched (the
     // pre-roll): its colour in the overlap at the template's geometry into
     // cut_stats_ (with the seam colour blend), and from `flowFrom` on its

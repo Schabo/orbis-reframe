@@ -3,10 +3,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 
 extern "C" {
@@ -126,6 +130,217 @@ double KeyframeAtOrBeforeSec(AVFormatContext* fmt, int stream, int64_t timestamp
     return e ? e->timestamp * av_q2d(st->time_base) : -1.0;
 }
 
+// A series of stills decoded ahead: `workers` threads, each with a decoder
+// set up as the first part's (the open()'s set-up hook) and opening each
+// photo itself, as the first part's container format, decode the parts
+// from the one asked for on, `ahead` at most, while the reader takes them
+// in order. A photo is checked against the first part's picture (size and
+// pixel format), as a part's coding is.
+class LensDemuxer::StillsAhead {
+public:
+    struct Source {
+        std::string path;
+        int stream = 0; // the n-th lens stream
+        int64_t startUs = 0;
+    };
+    // `first`: the first part's stream, for the set-up hook; open as long as
+    // this is (the demuxer never closes the first part's file of stills).
+    StillsAhead(std::vector<Source> sources, const AVInputFormat* format, const AVStream* first,
+                DecoderSetup setup)
+        : m_sources(std::move(sources)), m_format(format), m_stream(first), m_setup(std::move(setup))
+    {
+        m_first = avcodec_parameters_alloc();
+        if (m_first)
+            avcodec_parameters_copy(m_first, first->codecpar);
+        const unsigned cores = std::max(2u, std::thread::hardware_concurrency());
+        // Each photo held decoded is a whole picture (106 MB on the X5).
+        const size_t workers = std::clamp<size_t>(cores / 2, 2, 6);
+        m_ahead = workers;
+        for (size_t i = 0; i < workers; ++i)
+            m_threads.emplace_back([this] { work(); });
+    }
+    ~StillsAhead()
+    {
+        {
+            std::lock_guard<std::mutex> lk(m_mx);
+            m_stop = true;
+        }
+        m_cv.notify_all();
+        for (std::thread& t : m_threads)
+            t.join();
+        for (auto& [part, r] : m_done)
+            av_frame_free(&r.frame);
+        avcodec_parameters_free(&m_first);
+    }
+
+    // Part `part`'s picture, decoded ahead from it on; nullptr with `err`
+    // set when it can't be (and dropped: asked again, it's decoded again).
+    AVFrame* take(size_t part, std::string& err)
+    {
+        std::unique_lock<std::mutex> lk(m_mx);
+        if (part != m_from) {
+            m_from = part;
+            // Decoded before for parts behind or too far ahead of it: gone.
+            for (auto it = m_done.begin(); it != m_done.end();)
+                if (it->first < m_from || it->first >= m_from + m_ahead) {
+                    av_frame_free(&it->second.frame);
+                    it = m_done.erase(it);
+                } else {
+                    ++it;
+                }
+        }
+        m_cv.notify_all();
+        m_doneCv.wait(lk, [&] { return m_done.count(part) > 0; });
+        Result r = std::move(m_done[part]);
+        m_done.erase(part);
+        // On from the next one: the reader goes on in order.
+        m_from = part + 1;
+        m_cv.notify_all();
+        err = r.err;
+        return r.frame;
+    }
+
+private:
+    struct Result {
+        AVFrame* frame = nullptr;
+        std::string err;
+    };
+
+    // The next part to decode: in the window from m_from, neither decoded
+    // nor being decoded; m_sources.size() when there is none.
+    size_t nextJob() const
+    {
+        for (size_t p = m_from; p < std::min(m_sources.size(), m_from + m_ahead); ++p)
+            if (!m_done.count(p) && !m_busy.count(p))
+                return p;
+        return m_sources.size();
+    }
+
+    void work()
+    {
+        AVCodecContext* dec = nullptr;
+        std::string setupErr;
+        if (const AVCodec* codec = m_first ? avcodec_find_decoder(m_first->codec_id) : nullptr) {
+            dec = avcodec_alloc_context3(codec);
+            if (!dec || avcodec_parameters_to_context(dec, m_first) < 0 ||
+                (m_setup && !m_setup(m_stream, codec, dec, setupErr)) ||
+                avcodec_open2(dec, codec, nullptr) < 0) {
+                avcodec_free_context(&dec);
+                if (setupErr.empty())
+                    setupErr = "no decoder for the photos";
+            }
+        } else {
+            setupErr = "no decoder for the photos";
+        }
+        AVPacket* pkt = av_packet_alloc();
+        for (;;) {
+            size_t part = 0;
+            {
+                std::unique_lock<std::mutex> lk(m_mx);
+                m_cv.wait(lk, [&] { return m_stop || nextJob() < m_sources.size(); });
+                if (m_stop)
+                    break;
+                part = nextJob();
+                m_busy.insert({part, true});
+            }
+            Result r;
+            if (!dec || !pkt)
+                r.err = setupErr.empty() ? std::string("out of memory") : setupErr;
+            else
+                r.frame = decode(dec, pkt, m_sources[part], r.err);
+            std::lock_guard<std::mutex> lk(m_mx);
+            m_busy.erase(part);
+            // Still wanted (a seek may have moved on), else dropped.
+            if (part >= m_from && part < m_from + m_ahead)
+                m_done[part] = std::move(r);
+            else
+                av_frame_free(&r.frame);
+            m_doneCv.notify_all();
+            m_cv.notify_all();
+        }
+        av_packet_free(&pkt);
+        avcodec_free_context(&dec);
+    }
+
+    // The photo at `src`, its one picture, at its part's start in µs.
+    AVFrame* decode(AVCodecContext* dec, AVPacket* pkt, const Source& src, std::string& err) const
+    {
+        AVFormatContext* fmt = nullptr;
+        if (const int rc = avformat_open_input(&fmt, src.path.c_str(), m_format, nullptr); rc < 0) {
+            err = AvError("avformat_open_input failed", rc);
+            return nullptr;
+        }
+        int streamIndex = -1;
+        for (unsigned i = 0, n = 0; i < fmt->nb_streams && streamIndex < 0; ++i)
+            if (fmt->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
+                static_cast<int>(n++) == src.stream)
+                streamIndex = static_cast<int>(i);
+        AVFrame* frame = av_frame_alloc();
+        avcodec_flush_buffers(dec);
+        bool got = false;
+        int rc = 0;
+        if (streamIndex < 0)
+            err = "no video stream " + std::to_string(src.stream);
+        else if (!frame)
+            err = "out of memory";
+        while (err.empty() && !got) {
+            rc = av_read_frame(fmt, pkt);
+            if (rc == AVERROR_EOF) {
+                avcodec_send_packet(dec, nullptr);
+            } else if (rc < 0) {
+                err = AvError("reading", rc);
+                break;
+            } else if (pkt->stream_index == streamIndex) {
+                rc = avcodec_send_packet(dec, pkt);
+                av_packet_unref(pkt);
+                if (rc < 0 && rc != AVERROR(EAGAIN)) {
+                    err = AvError("decoding", rc);
+                    break;
+                }
+            } else {
+                av_packet_unref(pkt);
+                continue;
+            }
+            rc = avcodec_receive_frame(dec, frame);
+            if (rc == 0)
+                got = true;
+            else if (rc == AVERROR_EOF)
+                err = "no picture in the file";
+            else if (rc != AVERROR(EAGAIN))
+                err = AvError("decoding", rc);
+        }
+        avformat_close_input(&fmt);
+        if (got && (frame->width != m_first->width || frame->height != m_first->height ||
+                    frame->format != m_first->format)) {
+            got = false;
+            err = "lens 0 isn't coded like the first part's";
+        }
+        if (!got) {
+            av_frame_free(&frame);
+            return nullptr;
+        }
+        frame->pts = frame->best_effort_timestamp = src.startUs;
+        frame->time_base = kMicros;
+        return frame;
+    }
+
+    const std::vector<Source> m_sources;
+    const AVInputFormat* const m_format;
+    const AVStream* const m_stream;
+    AVCodecParameters* m_first = nullptr;
+    const DecoderSetup m_setup;
+    size_t m_ahead = 2;
+    std::vector<std::thread> m_threads;
+    std::mutex m_mx;
+    std::condition_variable m_cv;     // a job to do, or stop
+    std::condition_variable m_doneCv; // a part decoded
+    bool m_stop = false;
+    size_t m_from = 0;               // the window's first part
+    std::map<size_t, Result> m_done; // decoded, not yet taken
+    std::map<size_t, bool> m_busy;   // being decoded
+};
+
+LensDemuxer::LensDemuxer() = default;
 LensDemuxer::~LensDemuxer() { close(); }
 
 void LensDemuxer::clearFifos()
@@ -141,6 +356,10 @@ void LensDemuxer::clearFifos()
 
 void LensDemuxer::close()
 {
+    m_stillsAhead.reset();
+    av_frame_free(&m_stillPeeked);
+    m_stillNext = 0;
+    m_setup = {};
     clearFifos();
     for (auto*& d : m_dec)
         avcodec_free_context(&d);
@@ -478,6 +697,12 @@ bool LensDemuxer::open(const std::vector<ClipPart>& parts, const DecoderSetup& s
             return false;
         }
     }
+    // A still is one picture, read ahead whole (StillsAhead): both lenses in it.
+    if (parts.front().stillUs > 0 && !shared && parts.front().lenses.size() > 1) {
+        err = "still pictures with a file per lens aren't supported";
+        return false;
+    }
+    m_setup = setup;
     for (const ClipPart& cp : parts) {
         Part part;
         part.startUs = cp.startUs;
@@ -564,21 +789,15 @@ bool LensDemuxer::drainDecoder(int lens, std::string& err)
             }
             return true;
         }
-        // Into clip time: a later part's frames count from its own start, a
-        // still's one frame is at it.
-        const Part& part = m_parts[m_part];
-        if (part.still) {
-            frm->pts = frm->best_effort_timestamp = part.startUs;
-            frm->time_base = kMicros;
-        } else {
-            if (const int64_t off = part.offset[lens]; off != 0) {
-                if (frm->pts != AV_NOPTS_VALUE)
-                    frm->pts += off;
-                if (frm->best_effort_timestamp != AV_NOPTS_VALUE)
-                    frm->best_effort_timestamp += off;
-            }
-            frm->time_base = lensStream(lens)->time_base;
+        // Into clip time: a later part's frames count from its own start.
+        // (A still's come from StillsAhead, timed there.)
+        if (const int64_t off = m_parts[m_part].offset[lens]; off != 0) {
+            if (frm->pts != AV_NOPTS_VALUE)
+                frm->pts += off;
+            if (frm->best_effort_timestamp != AV_NOPTS_VALUE)
+                frm->best_effort_timestamp += off;
         }
+        frm->time_base = lensStream(lens)->time_base;
         m_fifo[lens].push_back(frm);
     }
 }
@@ -683,6 +902,12 @@ void LensDemuxer::usePart(size_t part)
 void LensDemuxer::partKeyframes(size_t part, int64_t timestampMs, int64_t& before,
                                 int64_t& after) const
 {
+    if (const Part& pt = m_parts[part]; pt.still) { // its one frame; no file opened
+        const int64_t us = timestampMs * 1000;
+        before = us >= pt.startUs ? pt.startUs : kNoKeyframe;
+        after = us <= pt.startUs ? pt.startUs : kNoKeyframe;
+        return;
+    }
     std::string err;
     if (!ensurePart(part, err)) {
         // Unknown here; the seek or read that goes there says why.
@@ -690,12 +915,6 @@ void LensDemuxer::partKeyframes(size_t part, int64_t timestampMs, int64_t& befor
         return;
     }
     const Part& pt = m_parts[part];
-    if (pt.still) {
-        const int64_t us = timestampMs * 1000;
-        before = us >= pt.startUs ? pt.startUs : kNoKeyframe;
-        after = us <= pt.startUs ? pt.startUs : kNoKeyframe;
-        return;
-    }
     AVStream* st = m_inputs[pt.lensInput[0]].fmt->streams[pt.lensStream[0]];
     const int64_t ts = av_rescale_q(timestampMs, AVRational{1, 1000}, st->time_base) - pt.offset[0];
     // Keyframes only (no AVSEEK_FLAG_ANY).
@@ -764,17 +983,26 @@ bool LensDemuxer::seekToUs(int64_t fromUs, std::string& err)
         return false;
     }
     const int64_t at = std::max<int64_t>(0, fromUs);
+    if (m_parts[0].still) {
+        // The first still at or after the target (the end past the last);
+        // the read-ahead starts there when it's read. No file is touched.
+        size_t p = partAtUs(at);
+        if (m_parts[p].startUs < at)
+            ++p;
+        m_stillNext = p;
+        av_frame_free(&m_stillPeeked);
+        m_lastReadUs = kNoTime;
+        m_seekFromUs = kNoTime;
+        m_seekFailed.clear();
+        return true;
+    }
     // Ahead of the last frame read with no keyframe in between: the seek would
     // land on the keyframe this GOP started from and decode more frames than
     // carrying on from here (frame steps, short forward scrubs). Lens 0's
     // keyframes decide; with a file per lens, carrying on is right for the
     // other one too, just not always the cheaper way.
     // Only within the part being read: another part's files start over.
-    // A still before the target has nothing at or after it: the next part
-    // holds the frame (and a photo is a costly decode to drop).
-    size_t part = partAtUs(at);
-    if (m_parts[part].still && m_parts[part].startUs < at && part + 1 < m_parts.size())
-        ++part;
+    const size_t part = partAtUs(at);
     if (m_lastReadUs != kNoTime && fromUs > m_lastReadUs && part == m_part) {
         const int64_t atMs = at / 1000; // at or before the frame wanted
         double kf = -1.0;
@@ -805,9 +1033,7 @@ bool LensDemuxer::seekToUs(int64_t fromUs, std::string& err)
     // not the one before it, as a seek to the start of the window would.
     const double fps = m_lenses.empty() ? 0.0 : m_lenses[0].fps;
     const int64_t windowUs = fps > 0.0 ? std::max<int64_t>(0, std::llround(1e6 / fps) - 1) : 0;
-    // A still has its one frame at its start.
-    const int64_t targetUs =
-        m_parts[part].still ? 0 : std::max<int64_t>(0, at + windowUs - m_parts[part].startUs);
+    const int64_t targetUs = std::max<int64_t>(0, at + windowUs - m_parts[part].startUs);
     for (size_t i = 0; i < m_inputs.size(); ++i) {
         const std::vector<int>& ins = m_parts[part].lensInput;
         if (std::find(ins.begin(), ins.end(), static_cast<int>(i)) == ins.end())
@@ -891,11 +1117,57 @@ AVFrame* LensDemuxer::popFront(int lens)
     return f;
 }
 
+bool LensDemuxer::nextStill(AVFrame*& out, std::string& err)
+{
+    err.clear();
+    out = nullptr;
+    if (m_stillPeeked) {
+        std::swap(out, m_stillPeeked);
+        return true;
+    }
+    if (m_stillNext >= m_parts.size())
+        return false;
+    if (!m_stillsAhead) {
+        std::vector<StillsAhead::Source> sources;
+        for (const Part& p : m_parts)
+            sources.push_back({p.sources[0].path, p.sources[0].stream, p.startUs});
+        m_stillsAhead = std::make_unique<StillsAhead>(
+            std::move(sources), m_partFormat,
+            m_inputs[m_parts[0].lensInput[0]].fmt->streams[m_parts[0].lensStream[0]], m_setup);
+    }
+    out = m_stillsAhead->take(m_stillNext, err);
+    if (!out) {
+        // As ensurePart names a part that won't open.
+        err += " (part " + std::to_string(m_stillNext + 1) + ")";
+        if (m_stillNext > 0)
+            err += ": " + m_parts[m_stillNext].sources[0].path;
+        return false;
+    }
+    ++m_stillNext;
+    return true;
+}
+
 bool LensDemuxer::readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts, std::string& err)
 {
     if (lensCount() < 2) {
         err = "readNextPair requires 2 lens streams, have " + std::to_string(m_dec.size());
         return false;
+    }
+    if (m_parts[0].still) {
+        if (!nextStill(out0, err))
+            return false;
+        out1 = av_frame_clone(out0);
+        if (!out1) {
+            av_frame_free(&out0);
+            err = "out of memory";
+            return false;
+        }
+        m_lastReadUs = ptsUs(out0, lensStream(0)->time_base);
+        if (pts) {
+            pts->ms = MsOfUs(m_lastReadUs);
+            pts->us = m_lastReadUs;
+        }
+        return true;
     }
     if (!m_seekFailed.empty()) {
         err = m_seekFailed;
@@ -957,6 +1229,12 @@ bool LensDemuxer::readNextFrame(int lens, AVFrame*& out, std::string& err)
         err = "lens index " + std::to_string(lens) + " out of range";
         return false;
     }
+    if (m_parts[0].still) {
+        if (!nextStill(out, err))
+            return false;
+        m_lastReadUs = ptsUs(out, lensStream(0)->time_base);
+        return true;
+    }
     if (!m_seekFailed.empty()) {
         err = m_seekFailed;
         return false;
@@ -985,6 +1263,15 @@ AVFrame* LensDemuxer::peekFrame(int lens, std::string* err)
 {
     if (lens < 0 || lens >= lensCount())
         return nullptr;
+    if (m_parts[0].still) {
+        std::string e;
+        if (!m_stillPeeked && !nextStill(m_stillPeeked, e)) {
+            if (err)
+                *err = e;
+            return nullptr;
+        }
+        return m_stillPeeked;
+    }
     if (!m_seekFailed.empty()) {
         if (err)
             *err = m_seekFailed;
