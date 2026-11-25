@@ -131,7 +131,8 @@ build/orbis_stitch clip.insv --lens-profile ProtectorA \
 
 ## stitch_source_smoke
 
-Opens a clip through `stitch::NativeStitchSource` (the app's own stitch:
+Opens a clip (or a photo of an Interval series: the series) through
+`stitch::NativeStitchSource` (the app's own stitch:
 Vulkan video decode and the GPU stitch) and writes the frames at the given
 times as PPM images. Times far apart exercise seeking. `--range START END
 STEP` reads a run of frames instead and writes one every STEP ms.

@@ -300,7 +300,9 @@ project expect to see it? Then it's in the project.
 
 Today the code reads `.insv` files: the Insta360 X5, and experimentally the
 X6, the ONE X2 and the Antigravity A1 (a 360° drone that writes Insta360's
-format); and experimentally the DJI Avata 360's `.OSV`. Everything known about a format is in its document in
+format); the X5's Interval photos (`.insp`), a series as one clip, a photo
+a part (`orbiscore::ClipPart::stillUs`); and experimentally the DJI Avata
+360's `.OSV`. Everything known about a format is in its document in
 [`formats/`](formats/README.md).
 
 The app reads clips only through one description, `camera::ClipMetadata`

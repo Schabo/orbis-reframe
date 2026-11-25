@@ -49,10 +49,19 @@ struct InsvMakerNotes {
     // has a non-zero `file_group_index` (rising: 2 on the second video file,
     // 1 and 3 on the proxies) and the recording's first file's card path
     // (`/DCIM/Camera01/VID_….insv`) as `file_group_identify`, which the first
-    // file names too. 0 / empty when absent.
+    // file names too. 0 / empty when absent. A series of photos is a group
+    // too (`file_group_type` kInsvGroupIntervalPhotos): every photo names the
+    // series' first (`./DCIM/Camera01/IMG_….insp`,
+    // docs/formats/insta360-x5.md §3.6).
     uint64_t file_group_index = 0;
     std::string file_group_identify;
+    // Field 26.1, what kind of group: telemetry-parser's `SubMediaType`.
+    uint64_t file_group_type = 0;
 };
+
+// file_group_type of an Interval series of photos (telemetry-parser's
+// PhotoIntervalshooting; docs/formats/insta360-x5.md §3.6).
+constexpr uint64_t kInsvGroupIntervalPhotos = 5;
 
 // The profile named `name` in `notes`, or nullptr.
 const LensProfile* FindLensProfile(const InsvMakerNotes& notes, const std::string& name);
@@ -345,8 +354,10 @@ std::optional<InsvHighlights> ReadInsvHighlights(const std::string& file_path,
 // this is exactly the proprietary `inst` box, contiguous through EOF; this
 // function doesn't check the box's name, just that it's whatever comes after
 // `moov`, since that's a more robust definition to rely on than the exact
-// vendor box name if that ever changes). Returns an empty vector if no
-// `moov` box is found or nothing follows it.
+// vendor box name if that ever changes). A file with no `moov` (a 360
+// photo: a JPEG, then the trailer) gives the trailer as long as its footer
+// says. Returns an empty vector if nothing follows `moov`, or a file
+// without one has no trailer.
 //
 // The trailer's own internal framing is anchored purely relative to EOF (see
 // ReadInsvMakerNotes's implementation), so splicing these bytes onto the end of

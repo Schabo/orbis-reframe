@@ -136,6 +136,15 @@ struct InsvModel {
     // on. X5: 29 min 59 s, per Insta360 (its `_019` holds 1799.8 s). 0 when
     // not known: no such guess.
     double fileLimitSec;
+
+    // The axes of the gravity a 360 photo stores (record 0x300: one unit
+    // vector, repeated, and no gyro) -> the stitched sphere, a signed
+    // permutation as imuAxes. Null when unknown: photos aren't levelled.
+    // X5: "-z,-x,y", video's imuAxes turned half a turn about the vertical,
+    // measured 2026-11-25 on the Interval series in the samples: the horizon
+    // it gives lies on the real one all round on a photo 14 deg off level in
+    // a curve and on one 3.6 deg off (docs/formats/insta360-x5.md §3.6).
+    const char* photoGravityAxes;
 };
 
 // Every row.

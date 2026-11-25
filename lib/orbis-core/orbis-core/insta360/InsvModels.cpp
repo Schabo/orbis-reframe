@@ -8,18 +8,19 @@ const InsvModel kModels[] = {
     {"Insta360 X5", "Insta360", "z,-x,-y", "ProtectorS", "ProtectorA", 5312.0,
      {{3840, "8K"}, {2880, "5.7K"}, {1920, "4K"}, {0, nullptr}},
      {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv", false,
-     {1.0, 0.0, 0.0, 0.0}, 0.0, {}, "y,z,x", true, -0.5, 1799.0},
+     {1.0, 0.0, 0.0, 0.0}, 0.0, {}, "y,z,x", true, -0.5, 1799.0, "-z,-x,y"},
     // IMU axes: the X5's "z,-x,-y", confirmed 2026-11-11 on an 8K 30
     // Standard clip with deliberate yaw/pitch/roll (docs/formats/insta360-x6.md):
     // residual_stab --diagnose horizon ~0.4 deg, correction/raw ratio 1.02 at
     // scale 1; residual pan lowest vs z,x,y and -x,y,-z on the same stretch.
     // File names and proxy layout: the X5's (one .insv + .lrv per take; no
     // X6 proxy checked yet). Timelapse orientation:
-    // no X6 timelapse seen yet. Capture time: the X5's, unmeasured.
+    // no X6 timelapse seen yet. Capture time: the X5's, unmeasured. Photos:
+    // none seen yet.
     {"Insta360 X6", "Insta360", "z,-x,-y", nullptr, nullptr, 7680.0,
      {{3840, "8K"}, {3008, "6K"}, {1920, "4K"}, {0, nullptr}},
      {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv", false,
-     {1.0, 0.0, 0.0, 0.0}, 0.0, {}, nullptr, true, -0.5, 0.0},
+     {1.0, 0.0, 0.0, 0.0}, 0.0, {}, nullptr, true, -0.5, 0.0, nullptr},
     // A lens per file at 5.7K, proxy LRV_…_11_….insv, telemetry in ms, no
     // lens-guard profiles (docs/formats/insta360-one-x2.md §1, §6, §8). IMU
     // axes: "z,x,y", the X5's turned 180° about sphere X -- measured on both
@@ -31,7 +32,7 @@ const InsvModel kModels[] = {
     {"Insta360 ONE X2", "Insta360", "z,x,y", nullptr, nullptr, 2880.0,
      {{2880, "5.7K"}, {0, nullptr}, {0, nullptr}, {0, nullptr}},
      {180.0, 0.0, 0.0}, 1000.0, "_00_", "_10_", "LRV", "_11_", ".insv", true,
-     {1.0, 0.0, 0.0, 0.0}, 0.0, {}, nullptr, false, -2.3, 0.0},
+     {1.0, 0.0, 0.0, 0.0}, 0.0, {}, nullptr, false, -2.3, 0.0, nullptr},
     // A 360 drone writing Insta360's .insv (docs/formats/antigravity-a1.md):
     // both lenses in one file, the proxy PRX_….prx with the clip's own name,
     // no lens-guard profiles, field 27 in the file. The 5.2K and 4K lens
@@ -52,7 +53,7 @@ const InsvModel kModels[] = {
      {{3840, "8K"}, {2624, "5.2K"}, {1920, "4K"}, {0, nullptr}},
      {-90.0, 90.0, 0.0}, 1.0, nullptr, nullptr, "PRX", nullptr, ".prx", true,
      {0.5, 0.5, -0.5, 0.5}, 9.7, {{0.006, 0.238, 0.468}, {-0.000749, 0.000016}, 0.998714}, nullptr,
-     true, -0.5, 0.0},
+     true, -0.5, 0.0, nullptr},
 };
 
 } // namespace

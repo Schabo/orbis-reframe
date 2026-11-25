@@ -138,6 +138,13 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
         out.missingFirst = clip->missingFirst;
         out.mayContinueIn = clip->mayContinueIn;
         out.unevenTimeMap = clip->unevenTimeMap;
+        out.photoCount = clip->photoCount;
+        // A photo is a still: the series' length and rate are the clip's.
+        if (clip->photoCount > 0) {
+            out.durationMs = clip->durationMs;
+            for (MediaVideoStream& v : out.video)
+                v.fps = clip->fps;
+        }
     }
     return true;
 }

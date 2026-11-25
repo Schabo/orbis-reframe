@@ -441,6 +441,170 @@ std::optional<orbiscore::LensProfile> profile(const orbiscore::InsvMakerNotes& n
     return std::nullopt;
 }
 
+// The MEI calibration Insta360 Studio stitches with, into `out.lenses`
+// (sized 2): the 56-token string (every X5 file carries it), else the
+// shorter offset_v3 (field 54; the ONE X2's only one). Sets `calibrated`.
+void readCalibration(ClipMetadata& out, const orbiscore::InsvMakerNotes& notes,
+                     const orbiscore::InsvModel& model) {
+    orbiscore::CameraCalibration calib;
+    const auto ext = orbiscore::ReadInsvExtendedCalibrationString(out.path);
+    if (((ext && orbiscore::ParseExtendedCalibrationString(*ext, calib)) ||
+         orbiscore::ParseCalibrationV3String(notes.offset_v3, calib)) &&
+        calib.lensesExt.size() == 2) {
+        // fx / fy are given in field 27's sensor window.
+        double focalRefW = notes.crop_dst_w;
+        if (!(focalRefW > 0)) {
+            focalRefW = model.focalRefW;
+            std::fprintf(stderr, "[camera] no window_crop_info (field 27) in %s; taking the %s's "
+                                 "focal reference, %g\n",
+                         out.path.c_str(), model.name, focalRefW);
+        }
+        out.calibrated = true;
+        for (int i = 0; i < 2; ++i) {
+            out.lenses[i].calibration = calib.lensesExt[i];
+            out.lenses[i].calibration.focalRefW = focalRefW;
+            out.lenses[i].pose = orbiscore::Insta360LensPose(i);
+        }
+    }
+}
+
+// The rate a series of photos plays at, a photo a frame: a photo has none
+// of its own. The clip's speed sets the pace.
+constexpr double kPhotoSeriesFps = 30.0;
+
+// A photo of an Interval series and when it was taken (field 24, raw ticks).
+struct SeriesPhoto {
+    std::string path;
+    uint64_t taken = 0;
+};
+
+// Whether `notes` is a photo of the same Interval series as `series`'s: the
+// same camera, naming the same first photo.
+bool sameSeries(const orbiscore::InsvMakerNotes& notes, const orbiscore::InsvMakerNotes& series) {
+    return notes.file_group_type == orbiscore::kInsvGroupIntervalPhotos &&
+           notes.serial_number == series.serial_number &&
+           notes.file_group_identify == series.file_group_identify;
+}
+
+// The photos of the Interval series the photo `self` (maker notes `notes`)
+// belongs to, beside it, in the order they were taken: the files with its
+// extension of the same series (field 26, docs/formats/insta360-x5.md §3.6).
+std::vector<SeriesPhoto> photoSeries(const std::string& self, const orbiscore::InsvMakerNotes& notes) {
+    namespace fs = std::filesystem;
+    const fs::path p(self);
+    std::vector<SeriesPhoto> photos{{self, notes.first_frame_timestamp}};
+    std::error_code ec;
+    const fs::path dir = p.has_parent_path() ? p.parent_path() : fs::path(".");
+    for (const fs::directory_entry& e : fs::directory_iterator(dir, ec)) {
+        if (e.path().extension() != p.extension() || e.path().filename() == p.filename())
+            continue;
+        const auto theirs = orbiscore::ReadInsvMakerNotes(e.path().string());
+        if (theirs && sameSeries(*theirs, notes))
+            photos.push_back({e.path().string(), theirs->first_frame_timestamp});
+    }
+    std::sort(photos.begin(), photos.end(), [](const SeriesPhoto& a, const SeriesPhoto& b) {
+        return a.taken != b.taken ? a.taken < b.taken : a.path < b.path;
+    });
+    return photos;
+}
+
+// An Interval series of 360 photos (docs/formats/insta360-x5.md §3.6) as
+// one clip from the photo `out.path` on, a photo a part (Part::still) at
+// kPhotoSeriesFps. Each photo is one JPEG with both lenses side by side,
+// each lens's half where its calibration puts its centre.
+CameraReader::Result readPhotoSeries(const std::vector<orbiscore::InsvStreamInfo>& streams,
+                                     ClipMetadata& out, const orbiscore::InsvMakerNotes& notes,
+                                     const orbiscore::InsvModel& model, std::string& err) {
+    const orbiscore::InsvStreamInfo& pic = streams[0];
+    if (streams.size() != 1 || pic.width != 2 * pic.height) {
+        err = "a 360 photo with both lenses side by side in one picture expected, found " +
+              std::to_string(streams.size()) + " picture(s), the first " +
+              std::to_string(pic.width) + "x" + std::to_string(pic.height);
+        return CameraReader::Result::Failed;
+    }
+    out.projection = Projection::DualFisheye;
+    out.lenses.resize(2);
+    readCalibration(out, notes, model);
+    // The calibration's centres are given in the side-by-side frame
+    // (LensCalibExt::cx): lens 1's in the right half on the X5.
+    bool left[2] = {true, false};
+    if (out.calibrated) {
+        for (int i = 0; i < 2; ++i) {
+            const orbiscore::LensCalibExt& c = out.lenses[i].calibration;
+            left[i] = c.cx < c.w * 0.5;
+        }
+        if (left[0] == left[1]) {
+            std::fprintf(stderr, "[camera] both lenses' calibrated centres in one half of %s; "
+                                 "taking lens 0 as the left\n",
+                         out.path.c_str());
+            left[0] = true;
+            left[1] = false;
+        }
+    }
+    const auto lensesOf = [&](const std::string& path) {
+        std::vector<LensSource> l;
+        for (int i = 0; i < 2; ++i)
+            l.push_back({path, 0, {left[i] ? 0.0 : 0.5, 0.0, 0.5, 1.0}});
+        return l;
+    };
+
+    // From this photo on: an earlier one opens the series from there.
+    std::vector<SeriesPhoto> photos = photoSeries(out.path, notes);
+    photos.erase(photos.begin(),
+                 std::find_if(photos.begin(), photos.end(),
+                              [&](const SeriesPhoto& s) { return s.path == out.path; }));
+    out.parts.clear();
+    const auto startUs = [](size_t i) {
+        return std::llround(static_cast<double>(i) * 1e6 / kPhotoSeriesFps);
+    };
+    for (size_t i = 0; i < photos.size(); ++i) {
+        Part part;
+        part.path = photos[i].path;
+        part.lenses = lensesOf(part.path);
+        part.startUs = startUs(i);
+        part.durationUs = startUs(i + 1) - part.startUs;
+        part.still = true;
+        out.parts.push_back(std::move(part));
+    }
+    for (int i = 0; i < 2; ++i)
+        out.lenses[i].source = out.parts[0].lenses[i];
+    out.photoCount = static_cast<int>(photos.size());
+    out.fps = kPhotoSeriesFps;
+    out.durationMs = startUs(photos.size()) / 1000;
+    out.lensWidth = out.lensHeight = pic.height;
+    // A series whose first photo isn't beside it: it starts here.
+    if (const std::string first = std::filesystem::path(notes.file_group_identify).filename().string();
+        !first.empty() && first != std::filesystem::path(out.path).filename().string()) {
+        std::error_code ec;
+        if (!std::filesystem::exists(std::filesystem::path(out.path).parent_path() / first, ec))
+            out.missingFirst = first;
+    }
+    // The time between photos, the camera's clock per photo: the median gap
+    // (they're 9.9 to 23.1 s apart on the samples, 10.3 s typical).
+    if (photos.size() >= 2) {
+        std::vector<double> gaps;
+        for (size_t i = 1; i < photos.size(); ++i)
+            gaps.push_back(static_cast<double>(photos[i].taken - photos[i - 1].taken) *
+                           model.telemetryTickUs * 1e-6);
+        std::nth_element(gaps.begin(), gaps.begin() + gaps.size() / 2, gaps.end());
+        out.timelapseIntervalSec = gaps[gaps.size() / 2];
+        out.captureScale = out.timelapseIntervalSec * kPhotoSeriesFps;
+    }
+    out.mountYawDeg = model.mountDeg[0];
+    out.mountPitchDeg = model.mountDeg[1];
+    out.mountRollDeg = model.mountDeg[2];
+    out.lensCorrection = model.lensCorrection;
+    out.bareLens = profile(notes, "bare");
+    out.standardGuard = profile(notes, model.standardGuard);
+    out.premiumGuard = profile(notes, model.premiumGuard);
+    out.recordedLocal = LocalTimeFromDigits(std::to_string(notes.creation_time));
+    if (out.recordedLocal.empty())
+        out.recordedLocal = nameTime(out.path);
+    std::fprintf(stderr, "[camera] %s: an Interval series of %zu photos from here, %.1f s apart\n",
+                 out.path.c_str(), photos.size(), out.timelapseIntervalSec);
+    return CameraReader::Result::Read;
+}
+
 } // namespace
 
 CameraReader::Result Insta360Reader::read(const std::vector<orbiscore::InsvStreamInfo>& streams,
@@ -457,6 +621,12 @@ CameraReader::Result Insta360Reader::read(const std::vector<orbiscore::InsvStrea
     out.model = notes->model;
     out.firmware = notes->firmware;
     out.serial = notes->serial_number;
+    if (notes->file_group_type == orbiscore::kInsvGroupIntervalPhotos)
+        return readPhotoSeries(streams, out, *notes, model, err);
+    if (std::filesystem::path(out.path).extension() == ".insp") {
+        err = "a single 360 photo, which doesn't open yet (an Interval series does)";
+        return Result::Failed;
+    }
 
     // Both lenses as streams of this file, or lens 0 here and lens 1 in a
     // file of its own beside it.
@@ -470,29 +640,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<orbiscore::InsvStrea
     for (int i = 0; i < 2; ++i)
         out.lenses[i].source = first.lenses[i];
     out.parts = {std::move(first)};
-    // The MEI calibration Insta360 Studio stitches with: the 56-token string
-    // (every X5 clip carries it), else the shorter offset_v3 (field 54; the
-    // ONE X2's only one).
-    orbiscore::CameraCalibration calib;
-    const auto ext = orbiscore::ReadInsvExtendedCalibrationString(out.path);
-    if (((ext && orbiscore::ParseExtendedCalibrationString(*ext, calib)) ||
-         orbiscore::ParseCalibrationV3String(notes->offset_v3, calib)) &&
-        calib.lensesExt.size() == 2) {
-        // fx / fy are given in field 27's sensor window.
-        double focalRefW = notes->crop_dst_w;
-        if (!(focalRefW > 0)) {
-            focalRefW = model.focalRefW;
-            std::fprintf(stderr, "[camera] no window_crop_info (field 27) in %s; taking the %s's "
-                                 "focal reference, %g\n",
-                         out.path.c_str(), model.name, focalRefW);
-        }
-        out.calibrated = true;
-        for (int i = 0; i < 2; ++i) {
-            out.lenses[i].calibration = calib.lensesExt[i];
-            out.lenses[i].calibration.focalRefW = focalRefW;
-            out.lenses[i].pose = orbiscore::Insta360LensPose(i);
-        }
-    }
+    readCalibration(out, *notes, model);
     out.mountYawDeg = model.mountDeg[0];
     out.mountPitchDeg = model.mountDeg[1];
     out.mountRollDeg = model.mountDeg[2];
@@ -700,6 +848,28 @@ std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) 
     };
     if (auto clip = byName(p.filename().string()))
         return clip;
+    // A photo of an Interval series: the series' first photo beside it (the
+    // one field 26 names, else the earliest), whose clip holds it.
+    if (const auto notes = orbiscore::ReadInsvMakerNotes(path);
+        notes && notes->file_group_type == orbiscore::kInsvGroupIntervalPhotos &&
+        !notes->file_group_identify.empty()) {
+        std::error_code ec;
+        const std::filesystem::path named =
+            p.parent_path() / std::filesystem::path(notes->file_group_identify).filename();
+        std::string first;
+        if (named.filename() == p.filename())
+            return std::nullopt;
+        if (const auto theirs = std::filesystem::exists(named, ec)
+                                    ? orbiscore::ReadInsvMakerNotes(named.string())
+                                    : std::nullopt;
+            theirs && sameSeries(*theirs, *notes))
+            first = named.string();
+        else
+            first = photoSeries(path, *notes).front().path;
+        if (std::filesystem::equivalent(first, p, ec))
+            return std::nullopt;
+        return first;
+    }
     // A later part of a split recording (§1, field 26): the recording's
     // first file, when that is beside it and takes it in as a part; else it
     // stands as a clip of its own.

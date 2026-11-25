@@ -686,6 +686,154 @@ bool writeX5Part(const std::string& path, int frames, int grey0, int fps = kFps)
     return true;
 }
 
+// An X5 Interval photo's trailer, cut down (docs/formats/insta360-x5.md §3.6):
+// records in the order the X5 writes them, chained (no offsets table), the
+// preview before the metadata; in the metadata the model, field 24 (`taken`,
+// us), field 26 (`type`, the series' first photo `identify`), field 27's
+// whole 5376 window and the X5's calibration string (lens 1's centre in the
+// right half); the IMU record one gravity vector, repeated, no gyro.
+std::vector<uint8_t> x5PhotoTrailer(const std::string& serial, uint64_t taken, uint64_t type,
+                                    const std::string& identify)
+{
+    Bytes meta;
+    meta.pbString(1, serial).pbString(2, "Insta360 X5").pbString(3, "v1.11.10_build1");
+    meta.pbVarint(7, 20260815081108).pbVarint(24, taken);
+    Bytes group; // {1: type, 2: index, 3: identify, 4: total}
+    group.pbVarint(1, type).pbVarint(2, 1).pbString(3, identify).pbVarint(4, 0);
+    meta.pbBytes(26, group.b);
+    Bytes window;
+    window.pbVarint(1, 5376).pbVarint(2, 5376).pbVarint(3, 5376).pbVarint(4, 5376);
+    meta.pbBytes(27, window.b);
+    meta.pbString(111,
+                  "2_2.000000_4294.030_4293.860_2703.310_2684.030_0.241_0.068_89.993_0.000000_"
+                  "0.000000_0.000000_0.22969893_1.60199785_-1.24233508_-3.16975212_0.00000000_"
+                  "-0.00144594_0.00040147_-0.00395632_-0.00326463_0.00195414_0.00044626_"
+                  "0.01116405_0.00953672_10752_5376_113_2.000000_4277.660_4277.270_8073.210_"
+                  "2692.040_-0.088_-0.141_88.580_0.000774_0.000174_-0.031796_0.24695949_"
+                  "1.25187707_0.26544470_-5.21495152_0.00000000_-0.00144929_-0.00059055_"
+                  "0.00577204_0.01037207_-0.00314844_-0.00378038_-0.00842754_-0.02442369_10752_"
+                  "5376_113_394240");
+    Bytes imu;
+    for (int i = 0; i < 100; ++i) {
+        imu.u64(taken - 50000 + 1000 * i);
+        for (double v : {-0.99, 0.12, -0.06, 0.0, 0.0, 0.0})
+            imu.f64(v);
+    }
+    Bytes preview;
+    for (int i = 0; i < 4096; ++i)
+        preview.u8(0x80);
+    return testtrailer::insvTrailer({{0x300, imu.b}, {0x101, meta.b}, {0x200, preview.b}}, false);
+}
+
+// A photo, both lenses side by side; its grey tells it apart. With a
+// megabyte of Exif-like data ahead of the picture, as the X5's: FFmpeg's
+// probe then sees only the photo's start, as on a real one.
+bool writeX5Photo(const std::string& path, int grey, const std::vector<uint8_t>& trailer)
+{
+    return testmedia::writeJpeg(
+        path, 256, 128, [grey](int x, int y) { return uint8_t(grey + ((x * 7 + y * 13) % 16) - 8); },
+        trailer, 1100000);
+}
+
+// Interval series of X5 photos (§3.6): a photo opens its series from there
+// on, a photo a frame at 30 a second, in the order they were taken; each
+// lens its half; any photo of it names the first; another series beside it
+// and a single photo are no part of it; the first gone, the earliest left.
+void testIntervalPhotos(const std::filesystem::path& dir)
+{
+    std::printf("  X5 Interval photos: a series as one clip, a photo a frame\n");
+    const auto sub = dir / "interval";
+    std::filesystem::create_directories(sub);
+    const std::string serial = "IAHEA25088AYDQ";
+    const auto name = [](int n) {
+        char b[64];
+        std::snprintf(b, sizeof b, "IMG_20260815_0811%02d_00_%03d.insp", n, n);
+        return std::string(b);
+    };
+    const std::string identify = "./DCIM/Camera01/" + name(3);
+    // Six photos from _003, 10.3 s apart but one 11.5 s gap; their names
+    // out of the order they were taken in for _005 and _006 (field 24 rules).
+    const uint64_t takenUs[] = {115121549, 125405226, 146122259, 135779862, 156582634, 168082634};
+    std::vector<std::string> photos;
+    for (int k = 0; k < 6; ++k) {
+        const std::string path = (sub / name(3 + k)).string();
+        if (!writeX5Photo(path, 40 + 30 * k, x5PhotoTrailer(serial, takenUs[k], 5, identify))) {
+            std::printf("  (no MJPEG encoder: skipped)\n");
+            return;
+        }
+        photos.push_back(path);
+    }
+    // Another series (_001, _002) and a single photo (_020) beside them.
+    const std::string other1 = (sub / name(1)).string(), other2 = (sub / name(2)).string();
+    const std::string otherId = "./DCIM/Camera01/" + name(1);
+    CHECK(writeX5Photo(other1, 200, x5PhotoTrailer(serial, 81712530, 5, otherId)));
+    CHECK(writeX5Photo(other2, 210, x5PhotoTrailer(serial, 92012198, 5, otherId)));
+    const std::string single = (sub / name(20)).string();
+    CHECK(writeX5Photo(single, 220, x5PhotoTrailer(serial, 300000000, 0, "")));
+
+    const auto notes = orbiscore::ReadInsvMakerNotes(photos[0]);
+    CHECK(notes && notes->file_group_type == orbiscore::kInsvGroupIntervalPhotos &&
+          notes->file_group_identify == identify && notes->first_frame_timestamp == takenUs[0]);
+    std::string err;
+    const auto clip = camera::ReadClipMetadata(photos[0], &err);
+    CHECK(clip);
+    if (!clip) {
+        std::printf("  %s\n", err.c_str());
+        return;
+    }
+    // In the order taken: _003 _004 _006 _005 _007 _008.
+    const int order[] = {0, 1, 3, 2, 4, 5};
+    CHECK(clip->photoCount == 6 && clip->parts.size() == 6);
+    for (size_t i = 0; i < clip->parts.size() && i < 6; ++i) {
+        const camera::Part& p = clip->parts[i];
+        CHECK(p.path == photos[order[i]] && p.still);
+        CHECK(p.startUs == std::llround(i * 1e6 / 30.0) &&
+              p.startUs + p.durationUs == std::llround((i + 1) * 1e6 / 30.0));
+        CHECK(p.lenses.size() == 2 && p.lenses[0].path == p.path && p.lenses[0].rect.x == 0.0 &&
+              p.lenses[1].rect.x == 0.5 && p.lenses[0].rect.w == 0.5);
+    }
+    CHECK(clip->fps == 30.0 && clip->durationMs == 200 && clip->lensWidth == 128 &&
+          clip->lensHeight == 128);
+    CHECK(clip->calibrated && clip->lenses[0].calibration.focalRefW == 5376 &&
+          std::abs(clip->lenses[0].calibration.fx - 4294.03) < 1e-6); // the extended string's
+    CHECK(std::abs(clip->timelapseIntervalSec - 10.374636) < 1e-6 && // the median gap
+          std::abs(clip->captureScale - 30 * clip->timelapseIntervalSec) < 1e-9);
+    CHECK(clip->recordedLocal == "2026-08-15T08:11:08" && clip->missingFirst.empty());
+    // The pictures in that order, a photo a frame.
+    {
+        orbiscore::FisheyeDemux d;
+        CHECK(d.open(clip->partSources(), err));
+        CHECK(std::abs(d.lens(0).fps - 30.0) < 1e-9 && d.lens(0).durationUs == 200000);
+        bool inOrder = true;
+        int n = 0;
+        const auto mean = [](const orbiscore::Image& img) {
+            double sum = 0;
+            for (size_t i = 1; i < img.rgb.size(); i += 3)
+                sum += img.rgb[i];
+            return sum / (img.rgb.size() / 3.0);
+        };
+        for (orbiscore::Image a, b; d.readNextPair(a, b, nullptr, err); ++n)
+            inOrder = inOrder && n < 6 && std::abs(mean(a) - (40 + 30 * order[n])) < 3 &&
+                      std::abs(mean(b) - (40 + 30 * order[n])) < 3;
+        CHECK(err.empty() && inOrder && n == 6);
+    }
+    // Any photo of it names the first; from a later one, the series from there.
+    CHECK(camera::ClipFileOf(photos[4], &err) == photos[0]);
+    CHECK(camera::ClipFileOf(photos[0], &err) == photos[0]);
+    const auto fromThird = camera::ReadClipMetadata(photos[3], &err);
+    CHECK(fromThird && fromThird->photoCount == 4 && fromThird->parts[0].path == photos[3]);
+    // The other series is its own; a single photo doesn't open, and says why.
+    const auto other = camera::ReadClipMetadata(other2, &err);
+    CHECK(other && other->photoCount == 1);
+    CHECK(camera::ClipFileOf(other2, &err) == other1);
+    CHECK(!camera::ReadClipMetadata(single, &err) && err.find("single 360 photo") != std::string::npos);
+    // The first photo gone: the series from the earliest left, which knows.
+    std::filesystem::remove(photos[0]);
+    const auto rest = camera::ReadClipMetadata(photos[1], &err);
+    CHECK(rest && rest->photoCount == 5 && rest->missingFirst == name(3));
+    CHECK(camera::ClipFileOf(photos[2], &err) == photos[1]);
+}
+
 // A recording the X5 split into `_019` (2 s) and `_020` (1.2 s), as the
 // camera writes them: the same date and time in the names, the next
 // counter, field 26 naming the first file, field 24 on one clock (part 2's
@@ -1129,6 +1277,7 @@ int main(int argc, char** argv)
     testSplitRecording(dir);
     testTrimmedCopies(dir);
     testMissingParts(dir);
+    testIntervalPhotos(dir);
     if (argc > 1) {
         // Found by name: the sample folder is sorted into sub-folders by
         // whoever keeps it, and the test shouldn't stop running when it is.

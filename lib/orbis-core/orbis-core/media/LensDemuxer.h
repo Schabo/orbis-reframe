@@ -40,6 +40,7 @@ struct AVCodec;
 struct AVCodecContext;
 struct AVFormatContext;
 struct AVFrame;
+struct AVInputFormat;
 struct AVPacket;
 struct AVStream;
 
@@ -180,10 +181,11 @@ private:
 
     void clearFifos();
     void resetDecoders(); // flush + clear fifos, keep contexts
-    // The input for `path`, opened now if it isn't (again); -1 with `err`
-    // set. Closes inputs over kMaxOpenFiles, but not the part being read's
-    // or `keep`'s.
-    int openInput(const std::string& path, std::string& err, const Part* keep = nullptr) const;
+    // The input for `path`, opened now if it isn't (again), as `format` if
+    // given, else as FFmpeg finds it; -1 with `err` set. Closes inputs over
+    // kMaxOpenFiles, but not the part being read's or `keep`'s.
+    int openInput(const std::string& path, std::string& err, const Part* keep = nullptr,
+                  const AVInputFormat* format = nullptr) const;
     // Closes the least recently used inputs over kMaxOpenFiles, but not the
     // part being read's, `keep`'s or input `also`.
     void closeSpareInputs(const Part* keep, int also) const;
@@ -236,6 +238,10 @@ private:
     // cache of the files, not the reading state.
     mutable std::vector<Input> m_inputs;
     mutable uint64_t m_useTick = 0;
+    // The first part's container format, which every other part is opened
+    // as: they're coded alike, and probing each again costs time (and, a
+    // photo's large Exif ahead of its picture, a warning per file).
+    const AVInputFormat* m_partFormat = nullptr;
     AVPacket* m_pkt = nullptr;
     mutable std::vector<Part> m_parts;
     size_t m_part = 0;                   // the part being read

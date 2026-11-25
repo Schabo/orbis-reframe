@@ -297,6 +297,15 @@ bool NativeStitchSource::proxyLensSize(const std::vector<orbiscore::ClipPart>& p
     return true;
 }
 
+void NativeStitchSource::forgetSeamFrames() {
+    seam_window_.reset();
+    seam_colour_window_.reset();
+    seam_flow_window_.reset();
+    seam_fade_window_.reset();
+    if (gpu_)
+        gpu_->resetSeamFlow();
+}
+
 bool NativeStitchSource::readPairVk(AVFrame*& f0, AVFrame*& f1, orbiscore::FramePts* pts,
                                     std::string& err) {
     picture_repeat_ = false;
@@ -307,6 +316,8 @@ bool NativeStitchSource::readPairVk(AVFrame*& f0, AVFrame*& f1, orbiscore::Frame
         if (!vdec_->readNextPair(f0, f1, pts, err))
             return false;
         last_clip_us_ = pts->us;
+        if (stills_)
+            forgetSeamFrames();
         return true;
     }
     ProxyGrid& g = *proxy_;
@@ -339,6 +350,8 @@ bool NativeStitchSource::readPairCpu(orbiscore::Image& a, orbiscore::Image& b,
         if (!demux_->readNextPair(a, b, pts, err))
             return false;
         last_clip_us_ = pts->us;
+        if (stills_)
+            forgetSeamFrames();
         return true;
     }
     ProxyGrid& g = *proxy_;
@@ -404,6 +417,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     info_.height = clip->lensHeight;
     info_.fps = clip->fps;
     info_.duration_ms = clip->durationMs;
+    stills_ = clip->photoCount > 0;
 
     // The picture's files: the clip's own, or in proxy mode its preview
     // files, whose lenses are smaller (the calibration, stated at a reference
@@ -646,7 +660,8 @@ bool NativeStitchSource::seekFromUs(int64_t from_us) {
         seam_flow_field_.reset();
         seam_flow_gpu_ = false;
     }
-    if ((seam_colour_on_ || seam_flow_on_) && !quick && from_us > 0 && !preRollSeam(from_us))
+    if ((seam_colour_on_ || seam_flow_on_) && !quick && !stills_ && from_us > 0 &&
+        !preRollSeam(from_us))
         return false;
     if (!seekDecoder(from_us))
         return false;

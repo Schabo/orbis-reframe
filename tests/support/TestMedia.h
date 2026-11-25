@@ -46,9 +46,13 @@ std::vector<uint8_t> encodeH264Picture(int width, int height, uint8_t luma);
 // A baseline JPEG, full-range 4:2:0 (yuvj420p, as cameras write them), of
 // `width` x `height` with pixel (x, y)'s luma `luma(x, y)` and neutral
 // chroma, followed by `trailer` (an Insta360 photo's `inst` record block).
-// False when FFmpeg has no MJPEG encoder or the file can't be written.
+// `metadataBytes`: about that much of an application block ahead of the
+// picture, as a camera's Exif: a real photo's runs past FFmpeg's probe, so
+// the probe never reaches the trailer (in a small file the bytes after the
+// picture make it refuse the file). False when FFmpeg has no MJPEG encoder
+// or the file can't be written.
 bool writeJpeg(const std::string &path, int width, int height,
                const std::function<uint8_t(int x, int y)> &luma,
-               const std::vector<uint8_t> &trailer = {});
+               const std::vector<uint8_t> &trailer = {}, size_t metadataBytes = 0);
 
 } // namespace testmedia

@@ -99,6 +99,9 @@ struct MediaInfo {
     std::string missingFirst;
     std::string mayContinueIn;
     bool unevenTimeMap = false; // ClipMetadata::unevenTimeMap
+    // An Interval series of photos played as a clip: how many
+    // (ClipMetadata::photoCount; its `parts` are the photos), 0 otherwise.
+    int photoCount = 0;
 
     // The camera's name for the resolution it was filmed at ("8K"), or "".
     std::string captureMode;

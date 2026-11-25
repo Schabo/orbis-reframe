@@ -787,7 +787,7 @@ void testPhotoSeries(const std::string& dir)
 {
     std::printf("  a series of photos, one a part: their times, seeks, few files open\n");
     constexpr int kPhotos = 20;
-    constexpr int64_t kFrameUs = 33333; // 30 a second
+    // 30 a second: each shows to the next one's start, 33333 or 33334 µs.
     const auto startUs = [](int i) { return int64_t(std::llround(i * 1e6 / 30.0)); };
     const orbiscore::LensRect left{0.0, 0.0, 0.5, 1.0}, right{0.5, 0.0, 0.5, 1.0};
     std::vector<std::string> paths;
@@ -801,7 +801,7 @@ void testPhotoSeries(const std::string& dir)
             return;
         }
         paths.push_back(path);
-        parts.push_back({startUs(i), {{path, 0, left}, {path, 0, right}}, kFrameUs});
+        parts.push_back({startUs(i), {{path, 0, left}, {path, 0, right}}, startUs(i + 1) - startUs(i)});
     }
     // Full-range JPEG greys come back as they were; away from the halves' seam.
     const auto photoOf = [](const orbiscore::Image& img, int (*grey)(int)) {
@@ -831,8 +831,8 @@ void testPhotoSeries(const std::string& dir)
     orbiscore::FisheyeDemux d;
     std::string err;
     CHECK(d.open(parts, err));
-    CHECK(std::abs(d.lens(0).fps - 30.0) < 0.01 && d.lens(0).width == 128);
-    CHECK(d.lens(0).durationUs == startUs(kPhotos - 1) + kFrameUs);
+    CHECK(std::abs(d.lens(0).fps - 30.0) < 1e-3 && d.lens(0).width == 128); // to the µs
+    CHECK(d.lens(0).durationUs == startUs(kPhotos));
     bool inOrder = true;
     int photos = 0;
     for (int64_t us = -1;; ++photos) {

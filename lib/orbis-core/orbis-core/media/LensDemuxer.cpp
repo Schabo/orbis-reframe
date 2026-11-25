@@ -162,9 +162,11 @@ void LensDemuxer::close()
     m_seekFailed.clear();
     m_shared = false;
     m_unpairedLogged = false;
+    m_partFormat = nullptr;
 }
 
-int LensDemuxer::openInput(const std::string& path, std::string& err, const Part* keep) const
+int LensDemuxer::openInput(const std::string& path, std::string& err, const Part* keep,
+                           const AVInputFormat* format) const
 {
     int index = -1;
     for (size_t i = 0; i < m_inputs.size() && index < 0; ++i)
@@ -176,7 +178,7 @@ int LensDemuxer::openInput(const std::string& path, std::string& err, const Part
     }
     AVFormatContext* fmt = nullptr;
     // The caller names the file: it knows which clip that is.
-    if (const int rc = avformat_open_input(&fmt, path.c_str(), nullptr, nullptr); rc < 0) {
+    if (const int rc = avformat_open_input(&fmt, path.c_str(), format, nullptr); rc < 0) {
         char why[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(rc, why, sizeof(why));
         err = std::string("avformat_open_input failed: ") + why;
@@ -386,7 +388,7 @@ bool LensDemuxer::openPart(Part& part, const DecoderSetup* setup, std::string& f
     for (size_t l = 0; l < lenses.size(); ++l) {
         const LensSource& src = lenses[l];
         failedPath = src.path;
-        const int input = openInput(src.path, err, &part);
+        const int input = openInput(src.path, err, &part, setup ? nullptr : m_partFormat);
         if (input < 0)
             return false;
         // The n-th lens stream of the file.
@@ -496,16 +498,20 @@ bool LensDemuxer::open(const std::vector<ClipPart>& parts, const DecoderSetup& s
     }
     m_lensInput = m_parts[0].lensInput;
     m_videoStreamIndex = m_parts[0].lensStream;
+    m_partFormat = m_inputs[m_lensInput[0]].fmt->iformat;
     if (m_parts.size() > 1 && !ensurePart(m_parts.size() - 1, err)) {
         close();
         return false;
     }
-    // Stills: as many frames a second as they show for, and the series as
+    // Stills: as many frames a second as they show for, over the series
+    // (30 exactly where each shows 33333 or 33334 µs), and the series as
     // long as its last one's end.
     if (m_parts[0].still) {
+        const int64_t endUs = m_parts.back().startUs + m_parts.back().durationUs;
         for (InsvStreamInfo& info : m_lenses) {
-            info.fps = 1e6 / static_cast<double>(m_parts[0].durationUs);
-            info.durationUs = m_parts.back().startUs + m_parts.back().durationUs;
+            info.fps = static_cast<double>(m_parts.size()) * 1e6 /
+                       static_cast<double>(endUs - m_parts[0].startUs);
+            info.durationUs = endUs;
             info.durationMs = info.durationUs / 1000;
         }
     } else if (m_parts.size() > 1)

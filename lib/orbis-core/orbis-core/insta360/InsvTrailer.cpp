@@ -647,7 +647,9 @@ std::optional<InsvMakerNotes> ReadInsvMakerNotes(const std::string& file_path) {
                         WalkProtobuf(b, [&](uint32_t g, int gwt, uint64_t gv,
                                             const std::vector<uint8_t>& gb) {
                             // {1: type, 2: index, 3: identify, 4: total}
-                            if (g == 2 && gwt == 0)
+                            if (g == 1 && gwt == 0)
+                                result.file_group_type = gv;
+                            else if (g == 2 && gwt == 0)
                                 result.file_group_index = gv;
                             else if (g == 3 && gwt == 2)
                                 result.file_group_identify.assign(gb.begin(), gb.end());
@@ -664,7 +666,10 @@ std::optional<InsvMakerNotes> ReadInsvMakerNotes(const std::string& file_path) {
                 return false; // this is the only record type we need
             }
             return true;
-        });
+        },
+        // The others aren't read: a photo's preview (4.9 MB on the X5) comes
+        // before it, and a series is grouped by reading every photo's.
+        [](uint16_t id) { return id == 0x101; });
 
     if (!ok || !found) return std::nullopt;
     return result;
@@ -887,10 +892,26 @@ std::vector<uint8_t> ExtractRawTrailer(const std::string& file_path) {
     const int64_t file_size = static_cast<int64_t>(file.tellg());
 
     int64_t moov = 0, moov_end = 0;
-    if (!FindMp4Box(file, 0, file_size, "moov", moov, moov_end)) return {};
-    if (moov_end >= file_size) return {}; // nothing follows moov
-    std::vector<uint8_t> trailer(static_cast<size_t>(file_size - moov_end));
-    file.seekg(moov_end, std::ios::beg);
+    int64_t from = 0;
+    if (FindMp4Box(file, 0, file_size, "moov", moov, moov_end)) {
+        if (moov_end >= file_size) return {}; // nothing follows moov
+        from = moov_end;
+    } else {
+        // Not an MP4 (a photo: a JPEG with the trailer after it): the
+        // trailer as long as its footer says.
+        file.clear();
+        std::vector<uint8_t> footer(kFooterLen);
+        if (file_size < static_cast<int64_t>(kFooterLen)) return {};
+        file.seekg(file_size - static_cast<int64_t>(kFooterLen), std::ios::beg);
+        file.read(reinterpret_cast<char*>(footer.data()), kFooterLen);
+        if (!file || std::memcmp(footer.data() + (kFooterLen - kMagicLen), kMagic, kMagicLen) != 0)
+            return {};
+        const int64_t len = static_cast<int64_t>(ReadU32LE(footer.data() + 38));
+        if (len < static_cast<int64_t>(kFooterLen) || len > file_size) return {};
+        from = file_size - len;
+    }
+    std::vector<uint8_t> trailer(static_cast<size_t>(file_size - from));
+    file.seekg(from, std::ios::beg);
     file.read(reinterpret_cast<char*>(trailer.data()), trailer.size());
     if (!file) return {};
     return trailer;

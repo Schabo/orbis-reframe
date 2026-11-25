@@ -181,6 +181,36 @@ void MediaInfoPanel::addRecording(const camera::MediaInfo &m, QList<RecordingPar
                     "the clip, and it comes in as part of the clip."));
 }
 
+void MediaInfoPanel::addPhotoSeries(const camera::MediaInfo &m, QList<RecordingPart> parts)
+{
+    if (parts.isEmpty()) // as the files on the disk have it
+        for (const camera::MediaPart &p : m.parts)
+            parts.append({QString::fromStdString(p.path), p.startMs, p.durationMs, false});
+    addSection(tr("Photos"));
+    const QString first = QString::fromStdString(m.missingFirst);
+    if (!first.isEmpty())
+        addValue(tr("Starts in"), tr("%1\n⚠ Not here").arg(first),
+                 tr("The series starts with an earlier photo, which isn't in this folder. The "
+                    "clip starts with the photo it was added from."));
+    if (parts.isEmpty()) // one photo
+        parts.append({QString::fromStdString(m.path), 0, m.durationMs, false});
+    const int missing = static_cast<int>(
+        std::count_if(parts.begin(), parts.end(), [](const RecordingPart &p) { return p.missing; }));
+    const QString span = QStringLiteral("%1 – %2").arg(QFileInfo(parts.front().path).fileName(),
+                                                       QFileInfo(parts.back().path).fileName());
+    QString value = parts.size() == 1 ? tr("1 photo") : tr("%1 photos").arg(parts.size());
+    value += QLatin1Char('\n') + span;
+    if (missing > 0)
+        value += QLatin1Char('\n') + tr("⚠ %n not here", nullptr, missing);
+    addValue(tr("Photos"), value,
+             missing > 0 ? tr("Photos of the series aren't where the project expects them, in "
+                              "%1. Their frames play black, and the clip can't be exported "
+                              "over them. Put them back in the folder, under their names, and "
+                              "they play again.")
+                               .arg(QFileInfo(parts.front().path).absolutePath())
+                         : QFileInfo(parts.front().path).absolutePath());
+}
+
 void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
                              const QList<RecordingPart> &parts)
 {
@@ -218,7 +248,10 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
                     "motion and GPS as a plain trim, so stabilization, highlight marks and "
                     "titles or gauges from the GPS can be off in it. The camera's own file "
                     "doesn't have this problem."));
-    addRecording(m, parts);
+    if (m.photoCount > 0)
+        addPhotoSeries(m, parts);
+    else
+        addRecording(m, parts);
 
     addSection(tr("Video"));
     if (m.video.empty()) {
@@ -226,7 +259,18 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
     } else {
         const camera::MediaVideoStream &v = m.video.front();
         const QString mode = QString::fromStdString(m.captureMode);
-        if (!mode.isEmpty()) {
+        if (m.photoCount > 0) {
+            // Both lenses side by side in each photo.
+            const int side = v.height;
+            addValue(tr("Mode"), tr("Interval photos"),
+                     tr("A series of 360 photos the camera took one after another, played as "
+                        "a timelapse: one photo a frame."));
+            addValue(tr("Lenses"), tr("2 × %1×%2 fisheye").arg(side).arg(side),
+                     tr("Side by side in each photo."));
+            addValue(tr("Sphere"), QStringLiteral("%1×%2").arg(2 * side).arg(side),
+                     tr("The whole 360° picture once the two are stitched together, as a flat "
+                        "world-map image."));
+        } else if (!mode.isEmpty()) {
             addValue(tr("Mode"), tr("%1 360°").arg(mode),
                      tr("Read from the size of the lens pictures. 5.7K+ records pictures the "
                         "same size as 5.7K, so it shows as 5.7K."));
@@ -238,7 +282,11 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
             addValue(tr("Streams"), QString::number(m.video.size()));
             addValue(tr("Resolution"), QStringLiteral("%1×%2").arg(v.width).arg(v.height));
         }
-        addValue(tr("Frame rate"), tr("%1 fps").arg(fps(v.fps)));
+        if (m.photoCount > 0)
+            addValue(tr("Frame rate"), tr("%1 fps").arg(fps(v.fps)),
+                     tr("A photo a frame. The clip's speed sets how fast the photos go by."));
+        else
+            addValue(tr("Frame rate"), tr("%1 fps").arg(fps(v.fps)));
         if (m.captureFps > 0 && v.fps > 0)
             addValue(tr("Slow motion"), tr("Filmed at %1 fps").arg(fps(m.captureFps)),
                      tr("The camera filmed %1 frames a second and stored them at %2, so the "
@@ -246,7 +294,12 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
                         "follow the time it was filmed in.")
                          .arg(fps(m.captureFps), fps(v.fps))
                          .arg(m.captureFps / v.fps, 0, 'f', 2));
-        if (m.timelapseIntervalSec > 0 && v.fps > 0)
+        if (m.photoCount > 1 && m.timelapseIntervalSec > 0)
+            addValue(tr("Timelapse"),
+                     tr("A photo every %1 s").arg(m.timelapseIntervalSec, 0, 'f', 1),
+                     tr("The usual time between two photos, by the camera's clock. Stabilization "
+                        "follows the time each was taken in."));
+        else if (m.timelapseIntervalSec > 0 && v.fps > 0)
             addValue(tr("Timelapse"),
                      tr("A frame every %1 s").arg(m.timelapseIntervalSec, 0, 'f', 1),
                      tr("%1 of recording in %2 of video. Stabilization and the GPS follow the "
@@ -254,9 +307,9 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
                          .arg(duration(std::llround(double(m.durationMs) *
                                                     m.timelapseIntervalSec * v.fps)),
                               duration(m.durationMs)));
-        if (v.frameCount > 0)
+        if (v.frameCount > 0 && m.photoCount == 0)
             addValue(tr("Frames"), locale.toString(qlonglong(v.frameCount)));
-        addValue(tr("Codec"), upperCodec(v.codec, v.profile));
+        addValue(tr("Codec"), m.photoCount > 0 ? tr("JPEG") : upperCodec(v.codec, v.profile));
         QString format = v.bitDepth > 0 ? tr("%1-bit").arg(v.bitDepth) : QString();
         if (!v.chroma.empty())
             format += QLatin1Char(' ') + QString::fromStdString(v.chroma);

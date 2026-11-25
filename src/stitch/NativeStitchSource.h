@@ -450,6 +450,13 @@ private:
     bool seekFromUs(int64_t from_us);
     bool seekDecoder(int64_t from_us);
     bool preRollSeam(int64_t from_us);
+    // A series of photos (camera::ClipMetadata::photoCount): each frame a
+    // picture of its own, far in time from the one before, so the seam's
+    // windows (the old stitcher's seam, the colour blend, the flow and its
+    // fade) hold that frame alone -- emptied as each is read
+    // (forgetSeamFrames) -- and a seek measures nothing before its frame.
+    bool stills_ = false;
+    void forgetSeamFrames();
     // The next lens pair decoded and measured, nothing stitched (the
     // pre-roll): its colour in the overlap at the template's geometry into
     // cut_stats_ (with the seam colour blend), and from `flowFrom` on its

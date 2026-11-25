@@ -187,7 +187,7 @@ std::vector<uint8_t> encodeH264Picture(int width, int height, uint8_t luma)
 
 bool writeJpeg(const std::string &path, int width, int height,
                const std::function<uint8_t(int x, int y)> &luma,
-               const std::vector<uint8_t> &trailer)
+               const std::vector<uint8_t> &trailer, size_t metadataBytes)
 {
     const AVCodec *enc = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
     if (!enc)
@@ -229,8 +229,18 @@ bool writeJpeg(const std::string &path, int width, int height,
     av_packet_free(&pkt);
     av_frame_free(&f);
     avcodec_free_context(&ctx);
-    if (out.empty())
+    if (out.size() < 2)
         return false;
+    // APP9 segments (no camera's) after the start marker, each at most a
+    // segment's length.
+    std::vector<uint8_t> metadata;
+    for (size_t left = metadataBytes; left > 0;) {
+        const size_t n = std::min<size_t>(left, 65533);
+        metadata.insert(metadata.end(), {0xff, 0xe9, uint8_t((n + 2) >> 8), uint8_t((n + 2) & 0xff)});
+        metadata.insert(metadata.end(), n, 0);
+        left -= n;
+    }
+    out.insert(out.begin() + 2, metadata.begin(), metadata.end());
     std::ofstream file(path, std::ios::binary);
     file.write(reinterpret_cast<const char *>(out.data()), static_cast<std::streamsize>(out.size()));
     file.write(reinterpret_cast<const char *>(trailer.data()),

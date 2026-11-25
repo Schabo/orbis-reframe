@@ -55,6 +55,9 @@ private:
     void addSection(const QString &title);
     // The Recording section: a recording in several files.
     void addRecording(const camera::MediaInfo &info, QList<RecordingPart> parts);
+    // The Photos section: an Interval series, its photos summed up rather
+    // than listed (a series can hold hundreds).
+    void addPhotoSeries(const camera::MediaInfo &info, QList<RecordingPart> parts);
     void addValue(const QString &label, const QString &value, const QString &toolTip = {});
     // A value on its own full-width row: file names have no spaces to wrap at.
     void addWideValue(const QString &value, const QString &toolTip = {});

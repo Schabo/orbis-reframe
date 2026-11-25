@@ -22,9 +22,9 @@ full path, or what a value means.
 
 | Row | What it shows |
 |---|---|
-| (file name) | The name of the `.insv` file (for a ONE X2 5.7K clip, the front lens's `VID_…_00_…`). Hover over it for the full path. |
+| (file name) | The name of the `.insv` file (for a ONE X2 5.7K clip, the front lens's `VID_…_00_…`; for a series of photos, its first photo). Hover over it for the full path. |
 | **Size** | The file's size on disk. |
-| **Duration** | How long the file is, in minutes, seconds and thousandths, before any trimming. For a recording in several files, the first file's; the whole recording's is under *Recording*. |
+| **Duration** | How long the file is, in minutes, seconds and thousandths, before any trimming. For a recording in several files, the first file's; the whole recording's is under *Recording*. For a series of photos, the whole series'. |
 | **Recorded** | When the recording started, by the camera's clock: the time the camera showed. For a video that isn't from a 360 camera, the time the file says, in your computer's time zone. |
 | **Bitrate** | How much data the file holds per second of video, sound included. Higher means more detail, and larger files. |
 | **Back lens file** | Only for a clip whose back lens is in a file of its own (the Insta360 ONE X2's 5.7K clips): that file's name. Hover over it for the full path. The clip needs it, in the same folder. |
@@ -44,18 +44,28 @@ which is one clip.
 | **Starts in** | When the clip was added from a later file of the recording and the first file isn't in the folder: the first file's name, *⚠ Not here*. The clip starts where the file you added does. Added from the first file, the whole recording comes in as a clip of its own. |
 | **May go on in** | When the last file is as long as the camera makes one, and the next file isn't in the folder: that file's name. The files don't say whether the recording went on, so this is a guess: if you have the file, put it beside the others before adding the clip. |
 
+## Photos
+
+Only for a series of Interval photos (see
+[Getting started](getting-started.md)), which is one clip.
+
+| Row | What it shows |
+|---|---|
+| **Photos** | How many photos the series has, and its first and last photo's names. Photos that are gone since you added the series are counted, *⚠ 2 not here*: their frames play black, and the clip can't be exported over them. Hover over the row for the folder. |
+| **Starts in** | When the series was added from a later photo and its first photo isn't in the folder: the first photo's name, *⚠ Not here*. The clip starts with the photo you added. |
+
 ## Video
 
 | Row | What it shows |
 |---|---|
-| **Mode** | The recording mode: **8K**, **5.7K** or **4K** 360° on the X5, **8K**, **6K** or **4K** on the X6, **5.7K** on the ONE X2, **8K**, **5.2K** or **4K** on the Antigravity A1, **8K**, **6K** or **4K** on the DJI Avata 360. Read from the size of the lens pictures. The X5's 5.7K+ records pictures the same size as 5.7K, so it shows as 5.7K. |
-| **Lenses** | The size of each of the two fisheye pictures, in pixels. |
+| **Mode** | The recording mode: **8K**, **5.7K** or **4K** 360° on the X5, **8K**, **6K** or **4K** on the X6, **5.7K** on the ONE X2, **8K**, **5.2K** or **4K** on the Antigravity A1, **8K**, **6K** or **4K** on the DJI Avata 360. Read from the size of the lens pictures. The X5's 5.7K+ records pictures the same size as 5.7K, so it shows as 5.7K. **Interval photos** for a series of photos. |
+| **Lenses** | The size of each of the two fisheye pictures, in pixels. In a photo they're side by side. |
 | **Sphere** | The size of the whole 360° picture once the two are stitched together, as a flat world-map image. |
-| **Frame rate** | Frames per second, such as 29.97, 59.94 or 119.88. |
+| **Frame rate** | Frames per second, such as 29.97, 59.94 or 119.88. A series of photos plays a photo a frame at 30. |
 | **Slow motion** | On a clip filmed in slow motion (the Antigravity A1's 4K Slow Motion): the rate the camera filmed at, such as *Filmed at 100 fps*. The file stores the frames at the frame rate above, so the clip plays that much slower than it happened; hover over the row for how much. |
-| **Timelapse** | On a timelapse: how often the camera took a frame, such as *A frame every 2.0 s*; hover over the row for how long the recording took. |
+| **Timelapse** | On a timelapse: how often the camera took a frame, such as *A frame every 2.0 s*; hover over the row for how long the recording took. On a series of photos, the usual time between two, such as *A photo every 10.4 s*. |
 | **Frames** | How many frames the recording has. |
-| **Codec** | How the video is compressed: **HEVC** (H.265) or **H.264**, with its profile. |
+| **Codec** | How the video is compressed: **HEVC** (H.265) or **H.264**, with its profile; **JPEG** for photos. |
 | **Format** | Bits per colour (8 or 10) and how the colour is stored (4:2:0). |
 | **Colour** | The colour standard (BT.709, BT.2020), the HDR format if the video is HDR (HLG or PQ), and whether the levels use the full or the limited range. |
 | **Colour profile** | The colour profile the camera filmed in: **Standard**; a log profile such as **I-Log** (Insta360's); or an HDR mode, with its HDR format, such as **Dolby Vision (HLG)** (the Insta360 X6's). A log or HDR clip looks flat until you give it a LUT: the one the camera maker publishes for a log profile, **HLG to Rec.709** for HLG (see [LUTs](colour.md#luts)). Shown when the camera writes it into the file, or when the video is HDR. |

@@ -71,13 +71,13 @@ struct Part {
     std::vector<LensSource> lenses; // in lens order, as Lens::source
     int64_t startUs = 0;      // its first frame, in clip time
     int64_t durationUs = 0;
-    // A photo of a series: one frame, shown for durationUs (ClipPart::stillUs).
-    bool still = false;
     // The same lenses in the camera's low-res proxy of this part, in lens
     // order: one stream, each lens its half of the frame. Only the picture
     // comes from it -- calibration, motion and timing stay the part's own.
     // Empty when the part has no proxy beside it.
     std::vector<LensSource> proxyLenses;
+    // A photo of a series: one frame, shown for durationUs (ClipPart::stillUs).
+    bool still = false;
 };
 
 struct ClipMetadata {
@@ -105,6 +105,9 @@ struct ClipMetadata {
     // the files don't say they go on. Both "" otherwise.
     std::string missingFirst;
     std::string mayContinueIn;
+    // A series of photos played as a video, a photo a frame (Part::still):
+    // how many; 0 for a video.
+    int photoCount = 0;
     // A file of the clip that Insta360 software re-wrote with stretches cut
     // out or its speed changed (orbiscore::InsvTimeMap::plainTrim): the clip is
     // lined up with the camera's clock by one offset a file, so

@@ -1241,6 +1241,56 @@ void testMediaInfoParts(SettingsSidebar &bar)
     panel->setNoClip();
 }
 
+// Media information on an Interval series of photos: summed up, not a row
+// per photo; the series' mode, lenses, rate and the time between photos;
+// photos gone since it was added counted; its first photo not there.
+void testMediaInfoPhotoSeries(SettingsSidebar &bar)
+{
+    MediaInfoPanel *panel = bar.mediaInfo();
+    auto shows = [panel](const QString &text) {
+        for (const QLabel *l : panel->findChildren<QLabel *>())
+            if (l->text() == text)
+                return true;
+        return false;
+    };
+    camera::MediaInfo m;
+    m.path = "/c/IMG_20260815_081108_00_003.insp";
+    m.durationMs = 100;
+    camera::MediaVideoStream v;
+    v.width = 11904;
+    v.height = 5952;
+    v.fps = 30;
+    v.codec = "mjpeg";
+    v.frameCount = 1;
+    m.video = {v};
+    m.cameraModel = "Insta360 X5";
+    m.cameraClip = true;
+    m.photoCount = 3;
+    m.timelapseIntervalSec = 10.37;
+    m.parts = {{m.path, 0, 33},
+               {"/c/IMG_20260815_081118_00_004.insp", 33, 33},
+               {"/c/IMG_20260815_081129_00_005.insp", 66, 34}};
+    panel->setInfo(m);
+    CHECK(shows("Photos") && shows("3 photos\nIMG_20260815_081108_00_003.insp – "
+                                   "IMG_20260815_081129_00_005.insp"));
+    CHECK(!shows("Recording") && !shows("Files") && !shows("Frames"));
+    CHECK(shows("Interval photos") && shows("2 × 5952×5952 fisheye") && shows("11904×5952"));
+    CHECK(shows("30 fps") && shows("A photo every 10.4 s") && shows("JPEG"));
+    // As the project knows it: one photo gone.
+    const QList<RecordingPart> known = {
+        {QString::fromStdString(m.path), 0, 33, false},
+        {"/c/IMG_20260815_081118_00_004.insp", 33, 33, true},
+        {"/c/IMG_20260815_081129_00_005.insp", 66, 34, false}};
+    panel->setInfo(m, false, known);
+    CHECK(shows("3 photos\nIMG_20260815_081108_00_003.insp – "
+                "IMG_20260815_081129_00_005.insp\n⚠ 1 not here"));
+    // Added from a later photo, the first not in the folder.
+    m.missingFirst = "IMG_20260815_081045_00_001.insp";
+    panel->setInfo(m);
+    CHECK(shows("Starts in") && shows("IMG_20260815_081045_00_001.insp\n⚠ Not here"));
+    panel->setNoClip();
+}
+
 int main(int argc, char **argv)
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
@@ -1275,6 +1325,7 @@ int main(int argc, char **argv)
     testColourLut(bar);
     testMediaInfoProfile(bar);
     testMediaInfoParts(bar);
+    testMediaInfoPhotoSeries(bar);
     testProjectSettingsDialog();
 
     if (const QByteArray shot = qgetenv("ORBIS_SETTINGS_SHOT"); !shot.isEmpty()) {

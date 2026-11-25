@@ -8,6 +8,15 @@ orbis-reframe is a video editor for 360° camera footage. It opens Insta360
 tested on. You don't need Insta360 Studio or any other Insta360 software.
 It also opens the DJI Avata 360's `.OSV` files, experimentally (below).
 
+The X5's **Interval photos** open as a timelapse: add any photo of a
+series (`IMG_….insp`), or the folder, and the whole series comes in as one
+clip, a photo a frame at 30 frames a second, in the order they were taken.
+The clip's speed (see [The timeline](timeline.md)) sets how fast the photos
+go by. Each photo is a 72-megapixel picture decoded on the processor, so
+the series plays a few photos a second rather than smoothly; exporting it
+works at full quality. It isn't [stabilized](stabilization.md) yet. Single
+photos and the other photo modes don't open yet.
+
 The **Insta360 X6** is supported experimentally: its clips open, stitch,
 [stabilize](stabilization.md) and export, including the 10-bit I-Log and
 Dolby Vision modes (with a LUT, see [Colour](colour.md#luts)), but so far
