@@ -387,6 +387,34 @@ v1.11.10):
   `…_003`. The interval isn't in the metadata (no field 30); the file
   names step 10 s, sometimes 11.
 - Field 25 (readout) is 27.7 ms, longer than 8K video's 21.24 ms.
+- **Field 24 is the capture time**, device-clock µs (209746807 on `_012`):
+  the middle of the photo's IMU window. The photos of a series are 9.9 to
+  23.1 s apart by it (10.3 s typical).
+- **Lenses and calibration as in video** ✅: the left half is lens 0 (the
+  calibration's), the right half lens 1 -- swapped, the seam breaks. The
+  calibration strings (fields 53-56, 111/112) are the same day's video's,
+  in the 10752×5376 sensor frame; **field 27 is {src 5376², dst 5376²}**,
+  the whole sensor window (video crops to 5312), so the stitch scales the
+  focal length and the centre alike by 5952 / 5376. Stitched this way
+  (`orbis_stitch` on the two halves with the photo's trailer) the seam is
+  0.203° off on `_012`, as a guarded 8K video of the day (0.202°).
+- **No lens-guard table** (no field 145): a photo stitches with the
+  calibration as it is.
+- **The IMU record holds one unit vector, the camera's gravity** ✅: the
+  100 samples (1 ms apart) all carry the same accelerometer reading, of
+  length 1.000 on every photo, and a zero gyro. It is gravity with the
+  vehicle's acceleration taken out, not a raw reading: on `_028`, in a
+  curve at 102 km/h with the camera 14° off level, the horizon it gives
+  lies on the real one all round (a raw reading would follow the bike's
+  lean); also on `_033` (3.6°, flat fields). **Its axes are `-z,-x,y`**,
+  not video's `z,-x,-y` (a half turn about the vertical); the camera's own
+  preview (record 2) faces that way too, 180° from video's.
+- **GPS: one fix in the Exif** (latitude, longitude, altitude; no time,
+  speed or course) and no GPS record. On the Demo series **all 77 photos
+  carry the same fix** while the bike covers kilometres: a stale position,
+  not a track. Whether a photo ever gets a fresh one (another GPS source,
+  firmware) is open.
+- No orientation record (type 24) and no heading of any kind.
 - The app doesn't open `.insp` files yet.
 
 ## 4. The `inst` trailer — framing
