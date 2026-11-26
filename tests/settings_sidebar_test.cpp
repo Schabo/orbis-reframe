@@ -1297,6 +1297,13 @@ void testMediaInfoParts(SettingsSidebar &bar)
     m.unevenTimeMap = true;
     panel->setInfo(m);
     CHECK(shows("Re-written") && shows("⚠ With cuts or a speed change"));
+    // A camera with no measured values of its own: said under the model.
+    m.cameraModel = "Insta360 X4";
+    panel->setInfo(m);
+    CHECK(shows("Insta360 X4") && !shows("Insta360 X4\n⚠ Untested"));
+    m.untestedModel = true;
+    panel->setInfo(m);
+    CHECK(shows("Insta360 X4\n⚠ Untested"));
     panel->setNoClip();
 }
 

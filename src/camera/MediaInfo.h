@@ -60,6 +60,7 @@ struct MediaInfo {
     std::string cameraModel;
     std::string serialNumber;
     std::string firmware;
+    bool untestedModel = false; // ClipMetadata::untestedModel
     double imuRateHz = 0.0; // 0 if the file has no IMU track
     // No IMU, but the camera's orientation per frame (ClipMetadata::orientationPerFrame),
     // in a series of photos which way is up alone (`heading` false).

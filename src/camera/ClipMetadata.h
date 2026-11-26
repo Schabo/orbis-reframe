@@ -87,6 +87,11 @@ struct ClipMetadata {
     std::string model;  // "Insta360 X5", as the file names it
     std::string firmware;
     std::string serial;
+    // A model the reader knows the family of but has measured nothing on
+    // (orbiscore::FindInsvModel's general row): the clip opens with the
+    // family's general values, and its seam, level and stabilization may be
+    // off. The app says so.
+    bool untestedModel = false;
 
     Projection projection = Projection::DualFisheye;
     std::vector<Lens> lenses; // front lens first; the sources are the first part's

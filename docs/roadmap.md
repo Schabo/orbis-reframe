@@ -61,8 +61,9 @@ each is in its document in [`formats/`](formats/README.md).
   records ([`formats/insta360-x6.md`](formats/insta360-x6.md)).
 - **Insta360 X4**: probably close to working; confirm the calibration string,
   IMU flag and scaling, and axis map.
-- **Insta360 X4 Air**: one owner's log so far; it opens on the X5's row of
-  the Insta360 reader's table, and a split recording's second part is
+- **Insta360 X4 Air**: one owner's log so far; it opens, untested, on the
+  general row of the Insta360 reader's table (what the measured rows agree
+  on, none of the X5's own corrections), and a split recording's second part is
   refused. Needs its own row (6K lenses, like the X6), which calibration
   string it writes (its lenses are replaceable) and its IMU axes
   ([`formats/insta360-x4.md`](formats/insta360-x4.md), with the X4).

@@ -108,6 +108,7 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
     if (const auto clip = ReadClipMetadata(path)) {
         out.cameraClip = true;
         out.cameraModel = clip->model;
+        out.untestedModel = clip->untestedModel;
         out.recordedLocal = clip->recordedLocal;
         out.serialNumber = clip->serial;
         out.firmware = clip->firmware;

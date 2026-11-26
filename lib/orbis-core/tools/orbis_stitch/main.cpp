@@ -161,16 +161,19 @@ int main(int argc, char** argv)
     if (!(ext && orbiscore::ParseExtendedCalibrationString(*ext, calib)) &&
         !orbiscore::ParseCalibrationV3String(rawCalib->offset_v3, calib))
         die("no MEI lens calibration in the trailer");
-    // fx / fy are in field 27's sensor window; the model's when it's absent.
-    const double focalRefW = rawCalib->crop_dst_w > 0 ? rawCalib->crop_dst_w
-                                                      : orbiscore::FindInsvModel(rawCalib->model).focalRefW;
+    // fx / fy are in field 27's sensor window; the model's, or the
+    // calibration frame's, when it's absent (FindInsvFocalReference).
+    const orbiscore::InsvFocalReference ref = orbiscore::FindInsvFocalReference(
+        rawCalib->crop_dst_w, orbiscore::FindInsvModel(rawCalib->model), calib);
+    if (!ref.from)
+        die("no focal reference: no field 27, none known for the model, no calibration frame");
+    const double focalRefW = ref.w;
     for (orbiscore::LensCalibExt& e : calib.lensesExt)
         e.focalRefW = focalRefW;
     // The model's corrections to the strings (InsvModel::radialModelsExchanged).
     orbiscore::ApplyInsvModelCalibration(orbiscore::FindInsvModel(rawCalib->model), calib);
-    std::printf("extended MEI calibration: xi=%.3f fx=%.1f (lens 0), focal reference %g%s\n",
-                calib.lensesExt[0].xi, calib.lensesExt[0].fx, focalRefW,
-                rawCalib->crop_dst_w > 0 ? "" : " (not in the file: the model's)");
+    std::printf("extended MEI calibration: xi=%.3f fx=%.1f (lens 0), focal reference %g (%s)\n",
+                calib.lensesExt[0].xi, calib.lensesExt[0].fx, focalRefW, ref.from);
 
     // How the camera holds its lenses: the model's (InsvModel::mountDeg).
     const orbiscore::InsvModel& model = orbiscore::FindInsvModel(rawCalib->model);

@@ -38,7 +38,8 @@ struct InsvModel {
 
     // The focal reference window's width (LensCalibExt::focalRefW) for files
     // that don't carry field 27. The X5's 5312; the X6's 7680 (its clips
-    // carry the field, docs/formats/insta360-x6.md).
+    // carry the field, docs/formats/insta360-x6.md). 0 when not known:
+    // FindInsvFocalReference then takes it from the calibration.
     double focalRefW;
 
     // Capture modes by the square lens picture's width; unused entries are
@@ -190,12 +191,32 @@ struct InsvModel {
 // or a calibration without two lenses.
 void ApplyInsvModelCalibration(const InsvModel& model, CameraCalibration& calib);
 
-// Every row.
+// Every row measured on a model of its own.
 std::span<const InsvModel> InsvModels();
 
 // The row for `model` (the trailer's model field). A model without its own
-// row gets the X5's, and `*known` (if given) is set false so the caller can
-// say so.
+// row gets a general one, not another model's: only what the measured rows
+// agree on, and "not known" (null, empty, 0, false) for everything one
+// model alone measured, such as the X5's exchanged radial models or its
+// photos' gravity axes. `*known` (if given) is set false then, so the
+// caller can say the camera is untested.
 const InsvModel& FindInsvModel(const std::string& model, bool* known = nullptr);
+
+// The width of the sensor window a calibration's fx / fy are given in
+// (LensCalibExt::focalRefW), and where it came from: field 27's
+// `cropDstW` when the file carries it ("field 27"), else the model's
+// focalRefW ("model"), else half the width of the calibration's own frame
+// ("calibration"), which holds both lenses side by side: each lens's whole
+// sensor window. That is exact where the camera doesn't crop the window
+// (the A1's 5248, the X5's photos' 5376) and a few percent large where it
+// does (X5 video 1.2 %, the ONE X2 5.6 %), still nearer than another
+// model's number for a sensor of another size. {0, nullptr} when the
+// calibration has no frame either.
+struct InsvFocalReference {
+    double w = 0;
+    const char* from = nullptr;
+};
+InsvFocalReference FindInsvFocalReference(double cropDstW, const InsvModel& model,
+                                          const CameraCalibration& calib);
 
 } // namespace orbiscore

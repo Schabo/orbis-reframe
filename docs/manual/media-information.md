@@ -83,7 +83,7 @@ the data rate.
 
 | Row | What it shows |
 |---|---|
-| **Model** | The camera that recorded the file, such as *Insta360 X5*. |
+| **Model** | The camera that recorded the file, such as *Insta360 X5*. *⚠ Untested* under it: a camera orbis-reframe opens but hasn't been tested with, such as an Insta360 X4. Its clips open with general values for the camera's family, so the stitch seam, the horizon and stabilization may not look right (see [Getting started](getting-started.md)). |
 | **Serial** | The camera's serial number. Blur it out if you share a screenshot of this section. |
 | **Firmware** | The camera's software version at the time of recording. |
 | **Motion data** | How often the camera recorded its movement, which [stabilization](stabilization.md) works from: about 1000 times a second on the X5. *Orientation per frame* on an X5 timelapse, which records which way the camera pointed at each frame instead. *Level per photo* on a series of Interval photos, which records which way was up when each was taken, but not which way the camera turned. About 4000 on the DJI Avata 360, which records which way its camera pointed, not its gyroscope's readings. *Not recorded* means stabilization can't work for this clip. |

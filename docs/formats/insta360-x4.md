@@ -42,11 +42,18 @@ cameras are in this document; where they differ, it says which.
 - ⚠️ Per lens: 3840² at 8K, 2880² at 5.7K, 1920² at 4K (the X5's sizes),
   and on the X4 Air **3008² at 6K** (6016×3008, the X6's 6K). The app names a
   clip's mode by its lens size, from the model's row in
-  `orbiscore::InsvModel`; neither camera has a row, so both get the X5's,
-  which knows no 3008²: an X4 Air 6K clip would show no mode name.
+  `orbiscore::InsvModel`; neither camera has a row, so both get the general
+  one, which names 3008² 6K as the X6's row does.
 - ✅ The X4 Air's trailer names the model `Insta360 X4 Air` (read by our
   code on the owner's machine: "no table entry for "Insta360 X4 Air";
-  using the Insta360 X5's").
+  using the Insta360 X5's", as the app said then).
+- Without a row, both cameras open on the general one
+  (`orbiscore::FindInsvModel`), marked untested: only what the measured
+  rows agree on (the X5's and X6's IMU axes, Insta360's mount, the X line's
+  file names, the mode names), and none of the X5's own corrections -- its
+  strings' radial models stand as written, there is no guard table but the
+  file's, and timelapses and photos aren't levelled. Without field 27 the
+  focal reference is half the calibration's frame.
 
 ### Hardware
 
@@ -157,7 +164,7 @@ are the X5's (X5 §3.4).
 | Mode | Spec | Files | Our clips | Status |
 |---|---|---|---|---|
 | 360 Video 8K | 7680×3840, 30 / 25 / 24; Active HDR up to 8K 30 | `VID_…_00_` `.insv` + `.lrv` | none | **wanted first**: 3840² lenses, the calibration string, the IMU |
-| 360 Video 6K | 6016×3008, 50 / 48 / 30 / 25 / 24 | as above | none | **wanted**: 3008² lenses, which the X5's row doesn't name |
+| 360 Video 6K | 6016×3008, 50 / 48 / 30 / 25 / 24 | as above | none | **wanted**: 3008² lenses (the general row names them 6K) |
 | 360 Video 4K | 3840×1920, 50 / 48 / 30 / 25 / 24 (one retailer says 60) | as above | one owner's take at 30, split in two files (log only) | **wanted**: a short one-file clip, and the split take's files |
 | Filters Vivid / Flat | | as above | none | wanted, low |
 | H.264 encoding | | as above | none | **wanted**: one clip in each codec |

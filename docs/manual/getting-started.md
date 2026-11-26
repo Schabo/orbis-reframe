@@ -67,8 +67,13 @@ time and finds its `.LRF`: the drone writes the clip's original name into
 both files. Its photos (stitched `.JPG`, raw `.DNG` per lens) don't open
 yet.
 
-Other cameras (other Insta360 models, the DJI Osmo 360 family, GoPro)
-aren't supported yet. If you have one, short clips from it help add it:
+Other Insta360 models, such as the X4, X4 Air and X3, aren't supported
+yet, and orbis-reframe hasn't been tested with them. Their clips may open,
+with general values for Insta360's cameras instead of ones measured on that
+model, so the stitch seam, the horizon and stabilization may not look right;
+Media information shows *⚠ Untested* under the model. Other cameras (the
+DJI Osmo 360 family, GoPro) don't open yet. If you have one, short clips
+from it help add it:
 [sample clips wanted](../formats/README.md#sample-clips-wanted).
 
 > **Early software.** orbis-reframe has been built and tested on one computer

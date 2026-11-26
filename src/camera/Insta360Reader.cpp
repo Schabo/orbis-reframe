@@ -475,13 +475,21 @@ void readCalibration(ClipMetadata& out, const orbiscore::InsvMakerNotes& notes,
          orbiscore::ParseCalibrationV3String(notes.offset_v3, calib)) &&
         calib.lensesExt.size() == 2) {
         // fx / fy are given in field 27's sensor window.
-        double focalRefW = notes.crop_dst_w;
-        if (!(focalRefW > 0)) {
-            focalRefW = model.focalRefW;
-            std::fprintf(stderr, "[camera] no window_crop_info (field 27) in %s; taking the %s's "
-                                 "focal reference, %g\n",
-                         out.path.c_str(), model.name, focalRefW);
+        const orbiscore::InsvFocalReference ref =
+            orbiscore::FindInsvFocalReference(notes.crop_dst_w, model, calib);
+        if (!ref.from) {
+            std::fprintf(stderr, "[camera] no window_crop_info (field 27) in %s, none known for "
+                                 "the %s and no frame in its calibration; not calibrated\n",
+                         out.path.c_str(), notes.model.c_str());
+            return;
         }
+        const double focalRefW = ref.w;
+        if (std::string(ref.from) != "field 27")
+            std::fprintf(stderr, "[camera] no window_crop_info (field 27) in %s; taking the "
+                                 "focal reference from the %s, %g\n",
+                         out.path.c_str(),
+                         std::string(ref.from) == "model" ? "model's row" : "calibration's frame",
+                         focalRefW);
         orbiscore::ApplyInsvModelCalibration(model, calib);
         out.calibrated = true;
         for (int i = 0; i < 2; ++i) {
@@ -644,8 +652,10 @@ CameraReader::Result Insta360Reader::read(const std::vector<orbiscore::InsvStrea
     bool known = false;
     const orbiscore::InsvModel& model = orbiscore::FindInsvModel(notes->model, &known);
     if (!known)
-        std::fprintf(stderr, "[camera] no table entry for \"%s\"; using the %s's\n",
-                     notes->model.c_str(), model.name);
+        std::fprintf(stderr, "[camera] no table entry for \"%s\"; using general Insta360 values, "
+                             "untested\n",
+                     notes->model.c_str());
+    out.untestedModel = !known;
     out.maker = model.maker;
     out.model = notes->model;
     out.firmware = notes->firmware;

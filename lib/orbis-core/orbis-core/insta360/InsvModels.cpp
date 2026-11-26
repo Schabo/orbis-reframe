@@ -95,6 +95,26 @@ const InsvModel kModels[] = {
      true, -0.5, 0.0, nullptr, {}, false, nullptr},
 };
 
+// The row for a model without its own (FindInsvModel): what the measured
+// rows agree on, and "not known" for what one model alone measured, so no
+// model's own corrections land on another camera's files.
+// - Agreed on: the IMU axes (the X5's and X6's), Insta360's mount, the 1 us
+//   telemetry tick (X5, X6, A1), the capture time (X5, A1), the X line's
+//   file names and preview (X5, X6), and the mode names by lens size (each
+//   size named alike in every row that has it).
+// - Looked up in the file only: the guard profiles' names, which a file
+//   without its own table doesn't find (no lensProfiles), so it stitches as
+//   a bare lens.
+// - Not known: the focal reference (FindInsvFocalReference takes it from
+//   the calibration), the timelapse and photo orientation axes (not
+//   stabilized, not levelled), the file length limit (no guess that a part
+//   is missing), any lens correction, the exchanged radial models.
+const InsvModel kOtherInsta360 = {
+    "general Insta360", "Insta360", "z,-x,-y", "ProtectorS", "ProtectorA", 0.0,
+    {{3840, "8K"}, {3008, "6K"}, {2880, "5.7K"}, {1920, "4K"}},
+    {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv", false,
+    {1.0, 0.0, 0.0, 0.0}, 0.0, {}, nullptr, true, -0.5, 0.0, nullptr, {}, false, nullptr};
+
 } // namespace
 
 std::span<const InsvModel> InsvModels() { return kModels; }
@@ -122,7 +142,18 @@ const InsvModel& FindInsvModel(const std::string& model, bool* known) {
     }
     if (known)
         *known = false;
-    return kModels[0];
+    return kOtherInsta360;
+}
+
+InsvFocalReference FindInsvFocalReference(double cropDstW, const InsvModel& model,
+                                          const CameraCalibration& calib) {
+    if (cropDstW > 0)
+        return {cropDstW, "field 27"};
+    if (model.focalRefW > 0)
+        return {model.focalRefW, "model"};
+    if (!calib.lensesExt.empty() && calib.lensesExt[0].w > 0)
+        return {calib.lensesExt[0].w * 0.5, "calibration"};
+    return {};
 }
 
 } // namespace orbiscore

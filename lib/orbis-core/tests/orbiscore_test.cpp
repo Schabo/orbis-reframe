@@ -131,6 +131,45 @@ void testExtendedCalibration()
         CHECK(a.lensesExt[0].fx == e0.fx && a.lensesExt[1].fx == e1.fx);
     }
 
+    // A model without a row of its own gets the general one, none of the
+    // X5's own corrections: its strings stand as they are, no photo axes,
+    // timelapse axes, guard table, lens correction or file limit; what the
+    // measured rows agree on stays.
+    {
+        bool known = true;
+        const orbiscore::InsvModel& m = orbiscore::FindInsvModel("Insta360 X9", &known);
+        const orbiscore::InsvModel& x5 = orbiscore::FindInsvModel("Insta360 X5");
+        CHECK(!known && &m != &x5);
+        for (const orbiscore::InsvModel& row : orbiscore::InsvModels())
+            CHECK(&row != &m);
+        orbiscore::CameraCalibration g = c;
+        orbiscore::ApplyInsvModelCalibration(m, g);
+        CHECK(g.lensesExt[0].fx == e0.fx && g.lensesExt[1].fx == e1.fx);
+        CHECK(!m.radialModelsExchanged && !m.photoGravityAxes && !m.timelapseQuatAxes &&
+              !m.photoLensCorrection && m.lensProfiles.empty() && m.fileLimitSec == 0.0 &&
+              m.lensCorrection == orbiscore::SeamCorrection{} && m.focalRefW == 0.0);
+        CHECK(std::string(m.maker) == "Insta360" && std::string(m.imuAxes) == x5.imuAxes &&
+              m.telemetryTickUs == 1.0 && m.mountDeg[0] == 180.0 && m.midExposure &&
+              m.captureLagMs == x5.captureLagMs);
+        CHECK(std::string(m.captureMode(3840)) == "8K" && std::string(m.captureMode(3008)) == "6K" &&
+              std::string(m.captureMode(2880)) == "5.7K" && std::string(m.captureMode(1920)) == "4K");
+        // Each size named alike in every measured row that names it.
+        for (const orbiscore::InsvModel& row : orbiscore::InsvModels())
+            for (const orbiscore::InsvModel::CaptureMode& mode : row.captureModes)
+                if (mode.name && *m.captureMode(mode.lensWidth))
+                    CHECK(std::string(m.captureMode(mode.lensWidth)) == mode.name);
+
+        // The focal reference: field 27, else the row's, else half the
+        // calibration's frame (the X5's 10752: 5376, its photos' window).
+        const orbiscore::InsvFocalReference f27 = orbiscore::FindInsvFocalReference(5312, m, c);
+        CHECK(f27.w == 5312 && std::string(f27.from) == "field 27");
+        const orbiscore::InsvFocalReference row = orbiscore::FindInsvFocalReference(0, x5, c);
+        CHECK(row.w == 5312 && std::string(row.from) == "model");
+        const orbiscore::InsvFocalReference frame = orbiscore::FindInsvFocalReference(0, m, c);
+        CHECK(frame.w == 5376 && std::string(frame.from) == "calibration");
+        CHECK(!orbiscore::FindInsvFocalReference(0, m, orbiscore::CameraCalibration{}).from);
+    }
+
     // Tolerates the string embedded in a longer buffer (as it sits in a
     // protobuf field in the trailer, between binary framing bytes).
     orbiscore::CameraCalibration c2;

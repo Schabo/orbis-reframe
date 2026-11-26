@@ -375,7 +375,14 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
 
     if (!m.cameraModel.empty() || !m.serialNumber.empty()) {
         addSection(tr("Camera"));
-        addValue(tr("Model"), QString::fromStdString(m.cameraModel));
+        if (m.untestedModel)
+            addValue(tr("Model"), tr("%1\n⚠ Untested").arg(QString::fromStdString(m.cameraModel)),
+                     tr("orbis-reframe hasn't been tested with this camera yet. Its clips open "
+                        "with general values for the camera's family, so the stitch seam, the "
+                        "horizon and stabilization may not look right. Short sample clips from "
+                        "it help add it (the manual's Getting started says how)."));
+        else
+            addValue(tr("Model"), QString::fromStdString(m.cameraModel));
         addValue(tr("Serial"), QString::fromStdString(m.serialNumber));
         addValue(tr("Firmware"), QString::fromStdString(m.firmware));
         if (m.photoCount > 0 && m.orientationPerFrame && !m.heading)

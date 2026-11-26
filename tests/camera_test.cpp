@@ -635,13 +635,15 @@ void testA1Renamed(const std::filesystem::path& dir)
 // `timeMapOffsetMs` > 0: a copy Insta360 software re-wrote after a trim,
 // its video starting that far into the original (record 128, TimeMap);
 // `cutOutMs` > 0: made of two stretches, that much cut out after frame 5.
+// `model`: the model field, another camera's in the X5's layout.
 std::vector<uint8_t> x5PartTrailer(const std::string& serial, uint64_t firstFrame, uint64_t index,
                                    const std::string& identify, uint64_t imuFrom, uint64_t imuTo,
                                    double gyroX, double timeMapOffsetMs = 0.0,
-                                   double cutOutMs = 0.0)
+                                   double cutOutMs = 0.0,
+                                   const std::string& model = "Insta360 X5")
 {
     Bytes meta;
-    meta.pbString(1, serial).pbString(2, "Insta360 X5").pbString(3, "v1.5.6_build1");
+    meta.pbString(1, serial).pbString(2, model).pbString(3, "v1.5.6_build1");
     meta.pbVarint(7, 20250927144221).pbVarint(24, firstFrame);
     Bytes group; // {1: type, 2: index, 3: identify, 4: total}
     group.pbVarint(1, 20).pbVarint(2, index).pbString(3, identify).pbVarint(4, 0);
@@ -696,21 +698,25 @@ bool writeX5Part(const std::string& path, int frames, int grey0, int fps = kFps)
 // right half); the IMU record one gravity vector, repeated, no gyro (in the
 // 56-byte samples of the video tests; the X5 writes 20-byte ones).
 // `guard`: field 68, the camera's lens-guard setting (0 bare, 5 fitted); -1
-// leaves it out.
+// leaves it out. `model`: the model field, another camera's in the X5's
+// layout; `window` false leaves field 27 out.
 std::vector<uint8_t> x5PhotoTrailer(const std::string& serial, uint64_t taken, uint64_t type,
-                                    const std::string& identify, int guard = 5)
+                                    const std::string& identify, int guard = 5,
+                                    const std::string& model = "Insta360 X5", bool window = true)
 {
     Bytes meta;
-    meta.pbString(1, serial).pbString(2, "Insta360 X5").pbString(3, "v1.11.10_build1");
+    meta.pbString(1, serial).pbString(2, model).pbString(3, "v1.11.10_build1");
     meta.pbVarint(7, 20260815081108).pbVarint(24, taken);
     if (guard >= 0)
         meta.pbVarint(68, static_cast<uint64_t>(guard));
     Bytes group; // {1: type, 2: index, 3: identify, 4: total}
     group.pbVarint(1, type).pbVarint(2, 1).pbString(3, identify).pbVarint(4, 0);
     meta.pbBytes(26, group.b);
-    Bytes window;
-    window.pbVarint(1, 5376).pbVarint(2, 5376).pbVarint(3, 5376).pbVarint(4, 5376);
-    meta.pbBytes(27, window.b);
+    if (window) {
+        Bytes crop;
+        crop.pbVarint(1, 5376).pbVarint(2, 5376).pbVarint(3, 5376).pbVarint(4, 5376);
+        meta.pbBytes(27, crop.b);
+    }
     meta.pbString(111,
                   "2_2.000000_4294.030_4293.860_2703.310_2684.030_0.241_0.068_89.993_0.000000_"
                   "0.000000_0.000000_0.22969893_1.60199785_-1.24233508_-3.16975212_0.00000000_"
@@ -802,7 +808,7 @@ void testIntervalPhotos(const std::filesystem::path& dir)
               p.lenses[1].rect.x == 0.5 && p.lenses[0].rect.w == 0.5);
     }
     CHECK(clip->fps == 30.0 && clip->durationMs == 200 && clip->lensWidth == 128 &&
-          clip->lensHeight == 128);
+          clip->lensHeight == 128 && !clip->untestedModel);
     // The extended string's, with the X5's radial models exchanged
     // (InsvModel::radialModelsExchanged): lens 0 gets lens 1's focal length.
     CHECK(clip->calibrated && clip->lenses[0].calibration.focalRefW == 5376 &&
@@ -895,6 +901,57 @@ void testIntervalPhotos(const std::filesystem::path& dir)
     const auto rest = camera::ReadClipMetadata(photos[1], &err);
     CHECK(rest && rest->photoCount == 5 && rest->missingFirst == name(3));
     CHECK(camera::ClipFileOf(photos[2], &err) == photos[1]);
+}
+
+// A camera without a row of its own (orbiscore::FindInsvModel's general
+// one), in the X5's layout: its clips open, untested, with none of the X5's
+// own corrections -- an Interval series without field 27 and a video.
+void testUntestedModel(const std::filesystem::path& dir)
+{
+    std::printf("  an untested Insta360 model: general values, none of the X5's\n");
+    const auto sub = dir / "untested";
+    std::filesystem::create_directories(sub);
+    const std::string serial = "IAXXX00000000", model = "Insta360 X9";
+    const std::string first = (sub / "IMG_20261120_100000_00_001.insp").string();
+    const std::string second = (sub / "IMG_20261120_100010_00_002.insp").string();
+    const std::string identify = "./DCIM/Camera01/IMG_20261120_100000_00_001.insp";
+    if (!writeX5Photo(first, 60, x5PhotoTrailer(serial, 10000000, 5, identify, 5, model, false))) {
+        std::printf("  (no MJPEG encoder: skipped)\n");
+        return;
+    }
+    CHECK(writeX5Photo(second, 90, x5PhotoTrailer(serial, 20000000, 5, identify, 5, model, false)));
+    std::string err;
+    const auto clip = camera::ReadClipMetadata(first, &err);
+    CHECK(clip);
+    if (!clip) {
+        std::printf("  %s\n", err.c_str());
+        return;
+    }
+    CHECK(clip->untestedModel && clip->model == model && clip->photoCount == 2);
+    // The strings as they stand (no exchanged radial models), fx in half
+    // the calibration's frame: no field 27, and no focal reference known.
+    CHECK(clip->calibrated && clip->lenses[0].calibration.focalRefW == 5376 &&
+          std::abs(clip->lenses[0].calibration.fx - 4294.03) < 1e-6 &&
+          std::abs(clip->lenses[1].calibration.fx - 4277.66) < 1e-6);
+    CHECK(clip->lensCorrection == orbiscore::SeamCorrection{});
+    // No guard table in the file, none taken from the X5: a bare lens.
+    CHECK(!clip->bareLens && !clip->premiumGuard && !clip->standardGuard);
+    // Not levelled: the photos' gravity axes aren't known.
+    CHECK(!clip->hasMotion && !camera::ReadClipImu(first));
+    CHECK(std::abs(clip->timelapseIntervalSec - 10.0) < 1e-9);
+    {
+        camera::MediaInfo info;
+        CHECK(camera::ProbeMediaInfo(first, info, err) && info.untestedModel &&
+              info.cameraModel == model);
+    }
+
+    // A video, untested too.
+    const std::string video = (sub / "VID_20261120_100100_00_003.insv").string();
+    CHECK(writeX5Part(video, 10, 50));
+    appendTo(video, x5PartTrailer(serial, 1000000, 0, "", 1000000, 1400000, 0.1, 0.0, 0.0, model));
+    const auto v = camera::ReadClipMetadata(video, &err);
+    CHECK(v && v->untestedModel && v->mayContinueIn.empty());
+    std::filesystem::remove_all(sub);
 }
 
 // A recording the X5 split into `_019` (2 s) and `_020` (1.2 s), as the
@@ -1341,6 +1398,7 @@ int main(int argc, char** argv)
     testTrimmedCopies(dir);
     testMissingParts(dir);
     testIntervalPhotos(dir);
+    testUntestedModel(dir);
     if (argc > 1) {
         // Found by name: the sample folder is sorted into sub-folders by
         // whoever keeps it, and the test shouldn't stop running when it is.

@@ -321,7 +321,11 @@ where a lens's picture shows the camera itself (`orbiscore::LensMask`),
 IMU timing and axes, colour profile, lens-guard
 profiles, capture-mode names -- is data the reader fills in, not a code path
 per camera. Differences between models of one family are that reader's
-table (`orbiscore::InsvModel` for Insta360, `DjiReader`'s for DJI). What's still to come is under
+table (`orbiscore::InsvModel` for Insta360, `DjiReader`'s for DJI). A model
+of a known family without a row of its own opens on a general row -- what
+the measured rows agree on, never one model's own measurements -- and the
+clip is marked untested (`ClipMetadata::untestedModel`), which the app
+tells the user. What's still to come is under
 *Common camera model* in [`roadmap.md`](roadmap.md).
 
 ## Testing
