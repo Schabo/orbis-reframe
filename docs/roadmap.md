@@ -127,9 +127,13 @@ each is in its document in [`formats/`](formats/README.md).
   the view's motion alone as the fallback); a **graduated ND** that
   darkens the sky against the horizon on the sphere, so it stays on the
   sky however the view is reframed; diffusion / mist and a star filter
-  (streaks from bright points). More looks (sepia, retro) and an HDR
-  look (local contrast and tone compression, its own pass; not HDR
-  export).
+  (streaks from bright points). More looks (sepia, retro, bleach bypass,
+  cross-process, day-for-night), an HDR look (local contrast and tone
+  compression, its own pass; not HDR export), colour pop and split
+  toning, a motion trail (neighbouring frames, as the computed ND), speed
+  zoom, tilt-shift, lens flare held on the sun's place on the sphere and
+  light leaks, chromatic aberration, letterbox bars, and stylised effects
+  (VHS, glitch, scanlines).
   The split screen layouts (side by side, stacked, grid) join the library
   as **Layouts** to drop on a clip: a drop sets the clip's split, as its
   **Split screen** section does. Split screen isn't an effect -- it is
@@ -291,6 +295,11 @@ each is in its document in [`formats/`](formats/README.md).
   clip. Every conversion between timeline and source time follows the
   curve: playback, export, keyframes, overlays, privacy regions,
   stabilization.
+- **Time freeze**: time stops on one frame while the view keeps moving
+  through the frozen sphere along its keyframes; likely the same time
+  mapping as speed ramps (speed 0), so designed with them.
+- **Reverse / boomerang**: a clip or part played backwards, or forwards
+  then back; needs backward decoding of long-GOP footage.
 - **Direction lock, less drift**: Direction lock holds its heading from the
   gyroscope alone, which drifts 8-16° a minute on an X5. The gyro's bias
   can be measured where the camera stands still (it is stable per camera),
