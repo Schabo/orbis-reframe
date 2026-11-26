@@ -26,6 +26,7 @@ extern "C" {
 #include <libavutil/error.h>
 }
 
+#include <algorithm>
 #include <cerrno>
 #include <cmath>
 #include <cstdio>
@@ -1377,6 +1378,136 @@ void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::pa
     CHECK(camera::ReadClipImu(osv.string()));
 }
 
+// The GoPro MAX clip, where the sample tree is there: the camera's identity
+// and streams (docs/formats/gopro-max.md), the IMU lined up with the video
+// to the residuals that document measured, the .THM preview, and the .LRV
+// and .THM naming the clip.
+void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::path& dir)
+{
+    std::string err;
+    const auto clip = camera::ReadClipMetadata(clip360.string(), &err);
+    CHECK(clip);
+    if (!clip) {
+        std::printf("  %s\n", err.c_str());
+        return;
+    }
+    CHECK(clip->maker == "GoPro" && clip->model == "GoPro Max");
+    CHECK(clip->firmware == "H19.03.02.02.00" && !clip->serial.empty());
+    CHECK(clip->projection == camera::Projection::EquiAngularCube);
+    CHECK(clip->lensWidth == 4096 && clip->lensHeight == 1344 && std::abs(clip->fps - 25) < 1e-6);
+    CHECK(clip->captureMode == "5.6K");
+    CHECK(clip->recordedLocal == "2025-04-14T15:46:51");
+    // The two cube streams, in file order; no lens calibration (the EAC
+    // path's geometry is fixed by the projection).
+    CHECK(clip->lenses.size() == 2 && !clip->calibrated);
+    CHECK(clip->lenses[0].source.stream == 0 && clip->lenses[1].source.stream == 1);
+    CHECK(clip->parts.size() == 1 && clip->parts[0].lenses.size() == 2);
+    CHECK(std::filesystem::path(clip->proxyPath).extension() == ".LRV");
+    // The motion: the gyro at its measured rate (801.6 Hz over the whole
+    // track, not the nominal 800).
+    std::printf("  [dbg] hasMotion=%d rate=%.3f\n", clip->hasMotion ? 1 : 0, clip->imuRateHz);
+    CHECK(clip->hasMotion && std::abs(clip->imuRateHz - 801.6) < 1.0);
+
+    camera::MediaInfo info;
+    CHECK(camera::ProbeMediaInfo(clip360.string(), info, err) && info.cameraClip &&
+          info.proxyPath == clip->proxyPath);
+
+    const auto imu = camera::ReadClipImu(clip360.string());
+    CHECK(imu);
+    if (imu) {
+        // Body axes (MTRX applied), mapped as measured by rendering the
+        // horizon-locked view through all 24 candidates.
+        CHECK(imu->axisMap == "z,-x,-y");
+        CHECK(imu->hasOffset && imu->captureScale == 1.0);
+        // ~800 Hz over 64.56 s of video.
+        CHECK(imu->samples.size() > 50000 && imu->samples.size() < 53000);
+        bool ordered = true;
+        size_t badAt = 0;
+        uint64_t badFrom = 0, badTo = 0;
+        for (size_t i = 1; i < imu->samples.size(); ++i)
+            if (imu->samples[i].timestamp <= imu->samples[i - 1].timestamp) {
+                if (ordered) {
+                    badAt = i;
+                    badFrom = imu->samples[i - 1].timestamp;
+                    badTo = imu->samples[i].timestamp;
+                }
+                ordered = false;
+            }
+        std::printf("  [dbg] samples=%zu ordered=%d firstBad=%zu %llu->%llu\n",
+                    imu->samples.size(), ordered ? 1 : 0, badAt,
+                    (unsigned long long)badFrom, (unsigned long long)badTo);
+        CHECK(ordered);
+        // The gyro actually moves (a handheld clip) and the accelerometer
+        // rides along at ~1 g (raw / SCAL). The clip is tossed about, so the
+        // extremes are meaningless (measured 0.05-9.7 g: free fall and
+        // impacts); the percentiles are the honest check.
+        double gyroMax = 0.0;
+        std::vector<double> accelMag;
+        accelMag.reserve(imu->samples.size());
+        for (const orbiscore::ImuSample& s : imu->samples) {
+            gyroMax = std::max(gyroMax, std::abs(s.gyro[0]) + std::abs(s.gyro[1]) +
+                                           std::abs(s.gyro[2]));
+            accelMag.push_back(std::sqrt(s.accel[0] * s.accel[0] + s.accel[1] * s.accel[1] +
+                                         s.accel[2] * s.accel[2]));
+        }
+        const size_t nAcc = accelMag.size();
+        std::nth_element(accelMag.begin(), accelMag.begin() + nAcc / 10, accelMag.end());
+        const double accelP10 = accelMag[nAcc / 10];
+        std::nth_element(accelMag.begin(), accelMag.begin() + nAcc * 9 / 10, accelMag.end());
+        const double accelP90 = accelMag[nAcc * 9 / 10];
+        std::printf("  [dbg] gyroMax=%.3f accelP10=%.3f accelP90=%.3f\n", gyroMax, accelP10,
+                    accelP90);
+        CHECK(gyroMax > 0.5);
+        CHECK(accelP10 > 0.85 && accelP90 < 1.15);
+        // The clock: one frameTimes pair per sensor sample (63 for this
+        // clip), and the fit the format note measured -- slope within
+        // 10 ppm of 1.0, residuals under 1 ms against the packet PTS.
+        CHECK(imu->frameTimes.size() == 63);
+        if (imu->frameTimes.size() >= 2) {
+            const size_t n = imu->frameTimes.size();
+            double mx = 0.0, my = 0.0;
+            for (const orbiscore::FrameTime& f : imu->frameTimes) {
+                mx += f.videoSec / static_cast<double>(n);
+                my += f.trackSec / static_cast<double>(n);
+            }
+            double sxx = 0.0, sxy = 0.0;
+            for (const orbiscore::FrameTime& f : imu->frameTimes) {
+                sxx += (f.videoSec - mx) * (f.videoSec - mx);
+                sxy += (f.videoSec - mx) * (f.trackSec - my);
+            }
+            const double slope = sxy / sxx, intercept = my - slope * mx;
+            CHECK(std::abs(slope - 1.0) < 1e-5);
+            double maxRes = 0.0;
+            for (const orbiscore::FrameTime& f : imu->frameTimes)
+                maxRes = std::max(maxRes, std::abs(f.trackSec - (slope * f.videoSec + intercept)));
+            CHECK(maxRes < 1e-3);
+            CHECK(std::abs(imu->offsetSec - imu->frameTimes.front().trackSec) < 1e-12);
+        }
+    }
+
+    const auto thumb = camera::ReadClipThumbnail(clip360.string());
+    CHECK(thumb && !thumb->flat && thumb->width == 704 && thumb->height == 352);
+
+    // The MAX records no GPS.
+    const camera::ClipTelemetry tele = camera::ReadClipTelemetry(clip360.string());
+    CHECK(!tele.gps);
+
+    // The proxy names the clip; the preview names nothing (a clip claims
+    // only its proxy and its lens files), and the clip names itself.
+    std::filesystem::path sib = clip360;
+    CHECK(camera::ClipFileOf(sib.replace_extension(".LRV").string()) == clip360.string());
+    sib = clip360;
+    CHECK(camera::ClipFileOf(sib.replace_extension(".THM").string()) ==
+          sib.replace_extension(".THM").string());
+    CHECK(camera::ClipFileOf(clip360.string()) == clip360.string());
+
+    // A plain video the reader doesn't know stays not-a-clip: the maker
+    // note alone must not claim a Hero's single-stream file.
+    const std::filesystem::path heroDir = dir / "gopro_not_mine";
+    std::filesystem::create_directories(heroDir);
+    CHECK(!camera::ReadClipMetadata((heroDir / "nope.360").string(), &err));
+}
+
 int main(int argc, char** argv)
 {
     const auto dir = std::filesystem::temp_directory_path() / "orbis_camera_test";
@@ -1415,6 +1546,21 @@ int main(int argc, char** argv)
             testDjiAvata360(dji, dir);
         else
             std::printf("  (DJI Avata 360 sample clip not here: skipped)\n");
+        // The GoPro MAX sample tree (docs/formats/gopro-max.md): the clip
+        // found by name wherever the folder keeps it.
+        std::filesystem::path gopro;
+        std::error_code ec2;
+        const std::filesystem::path groot = std::filesystem::path(argv[1]) / "gopro-max";
+        for (std::filesystem::recursive_directory_iterator it(groot, ec2), end; !ec2 && it != end;
+             it.increment(ec2))
+            if (it->path().filename() == "GS012267.360") {
+                gopro = it->path();
+                break;
+            }
+        if (!gopro.empty())
+            testGoproMax(gopro, dir);
+        else
+            std::printf("  (GoPro MAX sample clip not here: skipped)\n");
     }
     if (!g_failures)
         std::filesystem::remove_all(dir);

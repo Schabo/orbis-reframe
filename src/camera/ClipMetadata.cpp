@@ -1,6 +1,7 @@
 #include "ClipMetadata.h"
 
 #include "DjiReader.h"
+#include "GoproReader.h"
 #include "Insta360Reader.h"
 
 #include <orbis-core/media/LensDemuxer.h>
@@ -20,7 +21,8 @@ namespace {
 const std::vector<const CameraReader*>& readers() {
     static const Insta360Reader insta360;
     static const DjiReader dji;
-    static const std::vector<const CameraReader*> all = {&insta360, &dji};
+    static const GoproReader gopro;
+    static const std::vector<const CameraReader*> all = {&insta360, &dji, &gopro};
     return all;
 }
 

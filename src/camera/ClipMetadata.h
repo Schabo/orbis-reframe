@@ -27,7 +27,10 @@ namespace camera {
 
 // How the camera stores the sphere.
 enum class Projection {
-    DualFisheye, // two opposite fisheye lenses, stitched here
+    DualFisheye,     // two opposite fisheye lenses, stitched here
+    EquiAngularCube, // the camera stitched already: six equi-angular cube
+                     // faces across two streams (the GoPro MAX,
+                     // docs/formats/gopro-max.md)
 };
 
 // Where a lens's picture comes from: a file and its n-th video stream (the

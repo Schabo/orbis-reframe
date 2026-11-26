@@ -145,12 +145,22 @@ to compare a horizon lock against, and it is free.
 
 ### Timing — the alignment is measurable, and it is good
 
-Each stream carries `STMP` (the time of its **last** row, microseconds on the camera's
-clock) and `TSMP` (that stream's rows **so far**, cumulative). So a row's time is
+Each stream carries `STMP` (the time of its **first** row, microseconds on the
+camera's clock) and `TSMP` (that stream's rows **so far**, cumulative). So a row's
+time runs forward from `STMP`:
 
 ```
-t(row n) = STMP − (TSMP − n) / rate        rate measured from ΔTSMP / ΔSTMP
+t(row n) = STMP + n / rate        rate = median of the per-chunk ΔTSMP / ΔSTMP
 ```
+
+(The rows run *forward* from `STMP`, measured: that placement keeps every join
+strictly increasing with a ~1 ms margin, while the backward reading `STMP −
+(TSMP − n) / rate` puts all 62 joins of a 64 s clip out of order. And the rate is
+the per-chunk **median**: the camera stops mid-sample at the end of a clip — the
+last gyro chunk carries 128 rows against a full ~1.04 s STMP span — which drags a
+global first-to-last fit down to 790.6 Hz where the median gives 801.6. A chunk's
+row count can also differ from its `TSMP` delta by 1, so nothing should derive
+timing from chunk spans.)
 
 and the camera clock is lined up with the video by fitting `STMP` against the packet
 PTS of the same sample. Measured on four clips, including an 8-minute part with 464

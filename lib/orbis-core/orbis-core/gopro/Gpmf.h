@@ -55,7 +55,7 @@ bool WalkGpmf(const uint8_t* data, size_t size, const GpmfVisitor& visit);
 struct GpmfStream {
     std::string name;   // STNM: "Gyroscope", "Accelerometer", ...
     std::string unit;   // SIUN: "rad/s", "m/s^2"
-    int64_t stmpUs = 0; // STMP: the camera clock's time of this stream's last row
+    int64_t stmpUs = 0; // STMP: the camera clock's time of this stream's first row
     uint64_t tsmp = 0;  // TSMP: this stream's rows so far, cumulative across the take
     double scal = 1.0;  // SCAL: raw / scal is in `unit`
     bool hasMtrx = false;
