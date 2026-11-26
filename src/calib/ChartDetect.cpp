@@ -160,8 +160,8 @@ bool DetectChart(const std::string& clipPath, ChartObservations& out, std::strin
         err = "the clip has one lens stream";
         return false;
     }
-    out.lensWidth = demux.lens(0).width;
-    out.lensHeight = demux.lens(0).height;
+    out.lensWidth = demux.lensWidth(0);
+    out.lensHeight = demux.lensHeight(0);
     out.fps = demux.lens(0).fps;
     const int64_t durationMs = std::max<int64_t>(1, demux.lens(0).durationMs);
     step = std::max(1, step);

@@ -54,6 +54,34 @@ bool FisheyeDemux::open(const std::vector<ClipPart>& parts, std::string& err)
     return m_demux.open(parts, CpuDecoderSetup, err);
 }
 
+namespace {
+// `r`'s pixels in a W x H frame: its corner and size, clipped to the frame.
+struct CropBox {
+    int x, y, w, h;
+};
+CropBox cropBox(const LensRect& r, int W, int H)
+{
+    CropBox b;
+    b.x = static_cast<int>(std::lround(r.x * W));
+    b.y = static_cast<int>(std::lround(r.y * H));
+    b.w = std::max(std::min(static_cast<int>(std::lround(r.w * W)), W - b.x), 0);
+    b.h = std::max(std::min(static_cast<int>(std::lround(r.h * H)), H - b.y), 0);
+    return b;
+}
+} // namespace
+
+int FisheyeDemux::lensWidth(int i) const
+{
+    const InsvStreamInfo& s = lens(i);
+    return cropBox(m_rect[i], s.width, s.height).w;
+}
+
+int FisheyeDemux::lensHeight(int i) const
+{
+    const InsvStreamInfo& s = lens(i);
+    return cropBox(m_rect[i], s.width, s.height).h;
+}
+
 void FisheyeDemux::cropInto(int lens, const Image& img, Image& out) const
 {
     const LensRect& r = m_rect[lens];
@@ -61,11 +89,8 @@ void FisheyeDemux::cropInto(int lens, const Image& img, Image& out) const
         out = img;
         return;
     }
-    const int x = static_cast<int>(std::lround(r.x * img.w));
-    const int y = static_cast<int>(std::lround(r.y * img.h));
-    const int w = std::min(static_cast<int>(std::lround(r.w * img.w)), img.w - x);
-    const int h = std::min(static_cast<int>(std::lround(r.h * img.h)), img.h - y);
-    out.allocForWrite(std::max(w, 0), std::max(h, 0)); // every row copied below
+    const auto [x, y, w, h] = cropBox(r, img.w, img.h);
+    out.allocForWrite(w, h); // every row copied below
     for (int row = 0; row < out.h; ++row)
         std::memcpy(out.rgb.data() + static_cast<size_t>(row) * out.w * 3,
                     img.rgb.data() + (static_cast<size_t>(y + row) * img.w + x) * 3,

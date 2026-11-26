@@ -51,6 +51,12 @@ public:
 
     int lensCount() const { return m_demux.lensCount(); }
     const InsvStreamInfo& lens(int i) const { return m_demux.lens(i); }
+    // Lens `i`'s picture, as a read gives it: its part of the stream's frame
+    // (LensSource::rect), the whole frame for a lens with a stream of its
+    // own. Smaller than lens(i)'s size where lenses share a frame (a photo
+    // series, a proxy).
+    int lensWidth(int i) const;
+    int lensHeight(int i) const;
 
     // Decodes lens `lens`'s frame at ~`timestampMs` into `out` (RGB24): seekTo
     // + decode forward to the first frame at or after the timestamp. Moves the

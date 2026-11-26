@@ -46,7 +46,7 @@ ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t 
         return fail(MeasureFailure::Unreadable, "demux open failed: " + err);
     if (demux.lensCount() < 2)
         return fail(MeasureFailure::Unsupported, "one lens stream in the file");
-    const int w = demux.lens(0).width, h = demux.lens(0).height;
+    const int w = demux.lensWidth(0), h = demux.lensHeight(0);
     orbiscore::FisheyeStitcher st;
     if (!st.configure(calib, w, h, params))
         return fail(MeasureFailure::Unsupported, "the stitch can't be set up");

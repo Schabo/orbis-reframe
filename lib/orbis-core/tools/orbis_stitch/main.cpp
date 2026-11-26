@@ -222,7 +222,7 @@ int main(int argc, char** argv)
             if (demux.seekTo(t, err) && demux.readNextPair(a, b, nullptr, err))
                 frames.push_back(orbiscore::MakeSeamFrame(a, b));
         }
-        const int w = demux.lens(0).width, h = demux.lens(0).height;
+        const int w = demux.lensWidth(0), h = demux.lensHeight(0);
         if (fit) {
             const auto r = orbiscore::EstimateSeamAlignment(calib, params, w, h, frames);
             std::printf("seam: %s (%s)\n", r.ok ? "ok" : "FAILED", r.message.c_str());

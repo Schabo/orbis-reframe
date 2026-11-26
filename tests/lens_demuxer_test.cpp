@@ -102,6 +102,7 @@ void testPairsInStep(const std::string& a, const std::string& b)
     std::string err;
     CHECK(d.open({{a, 0}, {b, 0}}, err));
     CHECK(d.lensCount() == 2);
+    CHECK(d.lensWidth(1) == d.lens(1).width && d.lensHeight(0) == d.lens(0).height);
     int n = 0;
     for (;; ++n) {
         const auto [f0, f1] = nextPair(d, greyA, greyB);
@@ -245,9 +246,13 @@ void testSideBySide(const std::string& dir)
     std::string err;
     CHECK(d.open({{path, 0, right}, {path, 0, left}}, err));
     CHECK(d.lensCount() == 2 && d.lens(1).width == 128);
+    // Each lens's picture is its half, as a read gives it -- the size the
+    // per-clip measurements set their stitch up for.
+    CHECK(d.lensWidth(0) == 64 && d.lensHeight(0) == 64 && d.lensWidth(1) == 64);
     orbiscore::Image a, b;
     CHECK(d.seekTo(400, err) && d.readNextPair(a, b, nullptr, err));
     CHECK(a.w == 64 && a.h == 64 && b.w == 64 && b.h == 64);
+    CHECK(a.w == d.lensWidth(0) && b.h == d.lensHeight(1));
     // Away from the seam between the halves, which the codec blurs.
     const auto inner = [](const orbiscore::Image& img) {
         orbiscore::Image c;

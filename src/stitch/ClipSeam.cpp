@@ -38,7 +38,7 @@ ClipSeamResult MeasureClipSeam(const std::string& clipPath, int64_t trimInMs, in
         return fail(MeasureFailure::Unreadable, "demux open failed: " + err);
     if (demux.lensCount() < 2)
         return fail(MeasureFailure::Unsupported, "one lens stream in the file");
-    const int w = demux.lens(0).width, h = demux.lens(0).height;
+    const int w = demux.lensWidth(0), h = demux.lensHeight(0);
     if (trimOutMs <= trimInMs)
         trimOutMs = demux.lens(0).durationMs;
 
