@@ -3,6 +3,7 @@
 #include "NativeStitchSource.h" // stitch::DualFisheyeStitchSetup
 
 #include <orbis-core/stitch/LensModel.h>
+#include <orbis-core/stitch/SeamAlignment.h> // orbiscore::SnapToKeyframeMs
 
 namespace stitch {
 
@@ -23,6 +24,11 @@ MeasureFailure PrepareClipMeasurement(const std::string& clipPath,
     if (clip)
         *clip = meta;
     return MeasureFailure::None;
+}
+
+int64_t MeasureFrameMs(const camera::ClipMetadata& clip, int64_t ms, double fps)
+{
+    return clip.photoCount > 0 ? ms : orbiscore::SnapToKeyframeMs(ms, fps);
 }
 
 } // namespace stitch

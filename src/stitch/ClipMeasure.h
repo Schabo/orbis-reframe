@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -39,5 +40,12 @@ MeasureFailure PrepareClipMeasurement(const std::string& clipPath,
                                       orbiscore::CameraCalibration& calib,
                                       orbiscore::StitchParams& params, std::string& err,
                                       std::shared_ptr<const camera::ClipMetadata>* clip = nullptr);
+
+// The time a measurement reads its frame at, for `ms` in `clip`: a video's
+// nearest keyframe (orbiscore::SnapToKeyframeMs), so the seek decodes one
+// frame; `ms` itself in a series of photos, where every photo is a keyframe
+// and snapping would put frames spread over a short series onto the same
+// few photos.
+int64_t MeasureFrameMs(const camera::ClipMetadata& clip, int64_t ms, double fps);
 
 } // namespace stitch

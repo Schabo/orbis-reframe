@@ -3,7 +3,6 @@
 #include <orbis-core/stitch/LensModel.h>
 #include <orbis-core/stitch/FisheyeProjection.h>
 #include <orbis-core/media/FisheyeDemux.h>
-#include <orbis-core/stitch/SeamAlignment.h> // orbiscore::SnapToKeyframeMs
 #include <orbis-core/stitch/SeamCut.h>
 
 #include <memory>
@@ -60,8 +59,8 @@ ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t 
     for (int k = 0; k < kLensColourFrames; ++k) {
         if (cancel && cancel->load())
             return fail(MeasureFailure::Cancelled, "cancelled");
-        const int64_t t = orbiscore::SnapToKeyframeMs(
-            trimInMs + (trimOutMs - trimInMs) * (2 * k + 1) / (2 * kLensColourFrames),
+        const int64_t t = MeasureFrameMs(
+            *clip, trimInMs + (trimOutMs - trimInMs) * (2 * k + 1) / (2 * kLensColourFrames),
             demux.lens(0).fps);
         orbiscore::Image l0, l1;
         if (!demux.seekTo(t, err) || !demux.readNextPair(l0, l1, nullptr, err))

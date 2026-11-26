@@ -2,15 +2,18 @@
 // files' lens calibration (orbiscore::InsvModel::lensCorrection): which cameras
 // carry one, that the set-up applies it only when asked (the new stitcher)
 // and only over the file's calibration, not a chart calibration, and that
-// the stitch applies it as it does the seam correction, the two composing.
+// the stitch applies it as it does the seam correction, the two composing;
+// and where the per-clip measurements read their frames (MeasureFrameMs).
 // No GPU, no clip. Exit code is the failure count.
 
+#include "ClipMeasure.h"
 #include "LensCalibration.h"
 #include "NativeStitchSource.h"
 
 #include <ClipMetadata.h>
 #include <orbis-core/insta360/Calibration.h> // orbiscore::Insta360LensPose
 #include <orbis-core/stitch/FisheyeProjection.h>
+#include <orbis-core/stitch/SeamAlignment.h> // orbiscore::SnapToKeyframeMs
 #include <orbis-core/insta360/InsvModels.h>
 
 #include <algorithm>
@@ -190,11 +193,28 @@ void testStitchCorrection()
 
 } // namespace
 
+// A video's measured frames sit on its keyframes; a series of photos keeps
+// each time, so frames spread over a 75-photo series (2.5 s at 30 fps) land
+// on different photos instead of all on the first and the 61st.
+void testMeasureFrameMs()
+{
+    camera::ClipMetadata video;
+    CHECK(stitch::MeasureFrameMs(video, 1100, 30.0) == 2000);
+    CHECK(stitch::MeasureFrameMs(video, 900, 30.0) == 0);
+    CHECK(stitch::MeasureFrameMs(video, 1100, 30.0) == orbiscore::SnapToKeyframeMs(1100, 30.0));
+
+    camera::ClipMetadata series;
+    series.photoCount = 75;
+    CHECK(stitch::MeasureFrameMs(series, 1100, 30.0) == 1100);
+    CHECK(stitch::MeasureFrameMs(series, 156, 30.0) == 156);
+}
+
 int main()
 {
     testModels();
     testSetup();
     testStitchCorrection();
+    testMeasureFrameMs();
     if (g_failures == 0)
         std::printf("stitch_setup_test: all checks passed\n");
     return g_failures;

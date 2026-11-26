@@ -48,8 +48,9 @@ ClipSeamResult MeasureClipSeam(const std::string& clipPath, int64_t trimInMs, in
     for (int k = 0; k < kSeamFrames; ++k) {
         if (cancel && cancel->load())
             return fail(MeasureFailure::Cancelled, "cancelled");
-        const int64_t t = orbiscore::SnapToKeyframeMs(
-            trimInMs + (trimOutMs - trimInMs) * (2 * k + 1) / (2 * kSeamFrames), demux.lens(0).fps);
+        const int64_t t = MeasureFrameMs(
+            *clip, trimInMs + (trimOutMs - trimInMs) * (2 * k + 1) / (2 * kSeamFrames),
+            demux.lens(0).fps);
         orbiscore::Image l0, l1;
         if (!demux.seekTo(t, err) || !demux.readNextPair(l0, l1, nullptr, err))
             continue;
