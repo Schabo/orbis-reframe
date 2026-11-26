@@ -32,6 +32,7 @@
 #include "TitlePresets.h"
 #include "TitlesPanel.h"
 #include "TransitionsPanel.h"
+#include "UntestedCameraNotice.h"
 #include "WaveformCache.h"
 #include "panels/MediaInfoPanel.h"
 #include "support/TestMedia.h"
@@ -2720,6 +2721,95 @@ void testImportAcrossProjects(const Ctx &c)
     CHECK(!gate->probed.contains(QStringLiteral("a-held3.insv")));
 }
 
+// Clips from a camera orbis-reframe opens untested (stitch::ClipProbe::
+// untested_model) are told about once the import is done: one dialog for
+// every such camera in it, with the sample-clips link, once per camera
+// while the app runs; Don't show this again keeps a camera quiet for good.
+// A known camera's clip says nothing.
+void testUntestedCamera(const Ctx &c)
+{
+    std::printf("  untested camera notice\n");
+    // Which models are told about, and the notice's words.
+    {
+        QSet<QString> told;
+        CHECK(untestedcamera::toTell({QStringLiteral("Insta360 X4"), QString(),
+                                      QStringLiteral("Insta360 X4"), QStringLiteral("Insta360 X3")},
+                                     {QStringLiteral("Insta360 X3")}, told) ==
+              QStringList{QStringLiteral("Insta360 X4")});
+        CHECK(untestedcamera::toTell({QStringLiteral("Insta360 X4")}, {}, told).isEmpty());
+        const QString one = untestedcamera::noticeText({QStringLiteral("Insta360 X4")});
+        CHECK(one.contains(QLatin1String("<b>Insta360 X4</b> isn't supported yet")) &&
+              one.contains(untestedcamera::sampleClipsUrl().toString()));
+        const QString two = untestedcamera::noticeText(
+            {QStringLiteral("Insta360 X4"), QStringLiteral("A <b> Cam")});
+        CHECK(two.contains(QLatin1String("aren't supported yet")) &&
+              two.contains(QLatin1String("A &lt;b&gt; Cam")));
+    }
+
+    const ClipProbeFn base = standIns().probe;
+    const ClipProbeFn probe = [base](const std::string &path, stitch::ClipProbe &out,
+                                     std::string &err) {
+        if (!base(path, out, err))
+            return false;
+        const QString name = QFileInfo(QString::fromStdString(path)).fileName();
+        if (name.startsWith(QLatin1String("x4-")))
+            out.untested_model = "Insta360 X4";
+        else if (name.startsWith(QLatin1String("x3-")))
+            out.untested_model = "Insta360 X3";
+        return true;
+    };
+    const QString dir = QDir(c.dir).filePath(QStringLiteral("untested"));
+    QDir().mkpath(dir);
+    const auto file = [&](const char *name) {
+        const QString path = QDir(dir).filePath(QLatin1String(name));
+        writeFile(path);
+        return path;
+    };
+    Project p;
+    QWidget window;
+    MediaPoolPanel panel(p.mediaPool(), &window);
+    TabSidebar sidebar(TabSidebar::Side::Left, QStringLiteral("untestedSidebar"), &window);
+    MediaImporter importer(&p, &panel, &sidebar, probe, &window);
+
+    // A known camera's clip: no dialog.
+    failOnDialog(500);
+    importer.import({file("x5.insv")});
+    CHECK(waitFor([&] { return p.mediaPool()->contains(QDir(dir).filePath("x5.insv")); }));
+    QTest::qWait(500);
+
+    // Two clips of one untested camera and one of another: one dialog
+    // naming both, with the link; Don't show this again ticked.
+    QString text, link;
+    whenDialog([&](QWidget *w) {
+        if (auto *box = qobject_cast<QMessageBox *>(w)) {
+            text = box->text();
+            CHECK(box->checkBox());
+            if (box->checkBox())
+                box->checkBox()->setChecked(true);
+        }
+        w->close();
+    });
+    importer.import({file("x4-1.insv"), file("x4-2.insv"), file("x3-1.insv")});
+    CHECK(waitFor([&] { return !text.isEmpty(); }));
+    CHECK(text.contains(QLatin1String("Insta360 X4")) && text.contains(QLatin1String("Insta360 X3")) &&
+          text.count(QLatin1String("Insta360 X4")) == 1 &&
+          text.contains(untestedcamera::sampleClipsUrl().toString()));
+    CHECK(p.mediaPool()->contains(QDir(dir).filePath("x4-1.insv")));
+
+    // Told already this run: nothing more for either.
+    failOnDialog(500);
+    importer.import({file("x4-3.insv"), file("x3-2.insv")});
+    CHECK(waitFor([&] { return p.mediaPool()->contains(QDir(dir).filePath("x3-2.insv")); }));
+    QTest::qWait(500);
+    // Don't show this again: kept, for both cameras the dialog named.
+    const QStringList hidden =
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .value(QStringLiteral("untestedCameras/hidden"))
+            .toStringList();
+    CHECK(hidden.contains(QStringLiteral("Insta360 X4")) &&
+          hidden.contains(QStringLiteral("Insta360 X3")));
+}
+
 // A file replaced in place is read again (forget()); a read of the old file
 // still under way or with its result queued is dropped, not kept as the new
 // file's. The clip facts: a stand-in probe answering 1, then 2, as the
@@ -3534,6 +3624,7 @@ int main(int argc, char **argv)
             testMeasurementFailureReasons(c);
             testMeasurementAcrossProjects(c);
             testImportAcrossProjects(c);
+            testUntestedCamera(c);
             testCachesAfterReplace(c);
             testMenuFileDialogs(c);
             testRecovery(c);

@@ -611,6 +611,8 @@ if(FFMPEG_FOUND)
         src/ui/SystemCheck.h
         src/ui/Theme.cpp
         src/ui/Theme.h
+        src/ui/UntestedCameraNotice.cpp
+        src/ui/UntestedCameraNotice.h
     )
     set_target_properties(orbis_app PROPERTIES AUTOMOC ON)
     target_include_directories(orbis_app PUBLIC src/ui)

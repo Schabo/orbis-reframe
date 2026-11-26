@@ -34,6 +34,7 @@ bool ProbeClip(const std::string& clip_path, ClipProbe& out, std::string& err)
     out.lens_guards = {clip->standardGuard.has_value(), clip->premiumGuard.has_value(),
                        clip->guardFitted};
     out.highlight_ms = clip->highlightMs;
+    out.untested_model = clip->untestedModel ? clip->model : std::string();
     return true;
 }
 

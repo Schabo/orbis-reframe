@@ -9,9 +9,11 @@
 #include <QThreadPool>
 
 #include <cstdlib>
+#include <utility>
 
 #include "MediaPoolPanel.h"
 #include "TabSidebar.h"
+#include "UntestedCameraNotice.h"
 #include "../core/Project.h"
 
 namespace {
@@ -36,6 +38,7 @@ void MediaImporter::newSession()
     ++*m_session;
     m_pending = 0;
     m_failures.clear();
+    m_untested.clear();
     m_panel->setStatus(QString());
 }
 
@@ -115,15 +118,20 @@ void MediaImporter::import(const QStringList &paths)
             if (*live != session)
                 return;
             QString error;
-            const std::optional<MediaItem> item = probeMedia(file, &error, probe);
+            stitch::ClipProbe clipProbe;
+            const std::optional<MediaItem> item = probeMedia(file, &error, probe, &clipProbe);
+            const QString untested = item ? QString::fromStdString(clipProbe.untested_model)
+                                          : QString();
             QMetaObject::invokeMethod(
                 qApp,
-                [self, session, file, item, error] {
+                [self, session, file, item, error, untested] {
                     if (!self || session != *self->m_session) // another project now
                         return;
-                    if (item)
+                    if (item) {
                         self->m_project->mediaPool()->add(*item);
-                    else
+                        if (!untested.isEmpty() && !self->m_untested.contains(untested))
+                            self->m_untested << untested;
+                    } else
                         self->m_failures << QFileInfo(file).fileName() + QStringLiteral(": ") + error;
                     if (--self->m_pending > 0) {
                         self->m_panel->setStatus(addingFilesText(self->m_pending));
@@ -136,6 +144,8 @@ void MediaImporter::import(const QStringList &paths)
                         QMessageBox::warning(self->m_window, tr("Could not import"),
                                              tr("These files can't be read:\n%1").arg(failed));
                     }
+                    const QStringList untestedNow = std::exchange(self->m_untested, {});
+                    untestedcamera::tell(self->m_window, untestedNow);
                 },
                 Qt::QueuedConnection);
         });

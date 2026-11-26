@@ -39,6 +39,10 @@ struct ClipProbe {
     // The highlight marks set while recording, video ms in time order
     // (camera::ClipMetadata::highlightMs).
     std::vector<int64_t> highlight_ms;
+    // The camera as the file names it ("Insta360 X4") when it's one the
+    // reader opens untested (camera::ClipMetadata::untestedModel); empty
+    // otherwise.
+    std::string untested_model;
 };
 
 // Probes the clip `clip_path` is, or is part of.

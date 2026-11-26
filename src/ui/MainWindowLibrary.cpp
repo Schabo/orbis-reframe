@@ -28,6 +28,7 @@
 #include "RenderJobs.h"
 #include "TimelineWidget.h"
 #include "ThumbnailCache.h"
+#include "UntestedCameraNotice.h"
 #include "WaveformCache.h"
 #include "panels/AudioPanel.h"
 #include "panels/ColourPanel.h"
@@ -81,6 +82,11 @@ void MainWindow::openClip(const QString &clipPath)
     refreshClipPanels();
     showEditor();
     syncTimeline(); // opens paused on the first frame
+    // Queued: a clip from the command line opens before the window shows,
+    // and the notice belongs over it.
+    QTimer::singleShot(0, this, [this, model = QString::fromStdString(probe.untested_model)] {
+        untestedcamera::tell(this, {model});
+    });
 }
 
 void MainWindow::bindEmptyTimeline()

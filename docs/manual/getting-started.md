@@ -70,8 +70,11 @@ yet.
 Other Insta360 models, such as the X4, X4 Air and X3, aren't supported
 yet, and orbis-reframe hasn't been tested with them. Their clips may open,
 with general values for Insta360's cameras instead of ones measured on that
-model, so the stitch seam, the horizon and stabilization may not look right;
-Media information shows *⚠ Untested* under the model. Other cameras (the
+model, so the stitch seam, the horizon and stabilization may not look right.
+When you add a clip from one, a notice says so, once per camera while
+orbis-reframe runs, with a link to the sample clips wanted; tick **Don't show
+this again for this camera** to stop it for good. Media information shows
+*⚠ Untested* under the model. Other cameras (the
 DJI Osmo 360 family, GoPro) don't open yet. If you have one, short clips
 from it help add it:
 [sample clips wanted](../formats/README.md#sample-clips-wanted).
@@ -468,8 +471,9 @@ exports you save yourself, it only writes:
   and the projects folder. Deleting it empties the list (projects in the
   projects folder still show up); no project is deleted.
 - `~/.config/orbis-reframe/orbis-reframe.conf`: your settings, such as the
-  theme, the window layout and which startup warnings you've chosen not to
-  see again. Delete it to go back to the defaults.
+  theme, the window layout and which startup warnings and untested-camera
+  notices you've chosen not to see again. Delete it to go back to the
+  defaults.
 
 ## If it doesn't start
 

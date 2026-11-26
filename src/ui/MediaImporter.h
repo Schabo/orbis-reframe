@@ -65,6 +65,9 @@ private:
     QString m_lastDir;       // where files were last imported from
     int m_pending = 0;       // files still being probed
     QStringList m_failures;  // "name: why", reported when the last is done
+    // Untested cameras among the files added (stitch::ClipProbe::
+    // untested_model), told about when the last is done.
+    QStringList m_untested;
     // Bumped by newSession(); shared with the probe tasks, which skip a file
     // of an earlier session.
     std::shared_ptr<std::atomic<int>> m_session = std::make_shared<std::atomic<int>>(0);
