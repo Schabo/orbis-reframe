@@ -16,18 +16,23 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-1. **Interval photos as a timelapse** (*maintainer*): an Interval series of
-   `.insp` 360 photos (the X5's: a JPEG with both fisheyes, the lens
-   calibration and a moment of IMU in the trailer, GPS in the Exif) opens as
-   one clip -- a clip in parts, one photo per part, the parts opened as
-   playback reaches them -- and plays, stabilizes and exports like the
-   camera's own timelapse video. The clip's speed sets the pace. Each photo
-   is levelled by the gravity the camera stores with it (its own estimate,
-   the vehicle's acceleration already out), so Horizon lock and Lean follow
-   work; the photos hold no heading (no gyro, and the GPS a single fix on
-   the samples), so Direction lock doesn't, and says why. The photos' GPS
-   is a track for the map and gauges only where its fixes change. The
-   first step of *360 photos* below.
+1. **Interval photos as a timelapse** (*maintainer*), the GPS left: an
+   Interval series of `.insp` 360 photos (the X5's: a JPEG with both
+   fisheyes, the lens calibration and a moment of IMU in the trailer, GPS
+   in the Exif). Built: the series opens as one clip -- a clip in parts,
+   one photo per part, the parts opened as playback reaches them, read
+   ahead on several threads -- and plays, stabilizes and exports like the
+   camera's own timelapse video. The clip's speed sets the pace. Each
+   photo is levelled by the gravity the camera stores with it (its own
+   estimate, the vehicle's acceleration already out), so Horizon lock and
+   Lean follow work; the photos hold no heading (no gyro, and the GPS a
+   single fix on the samples), so Direction lock doesn't, and says why.
+   The photos carry no lens-guard table, so they take the one every X5
+   video carries, and lens 1, which the camera places a little differently
+   in its photos than in video, has its own measured correction (from one
+   series so far; re-fitted when more arrive). Left: the photos' GPS as a
+   track for the map and gauges, only where its fixes change. The first
+   step of *360 photos* below.
 
 Everything else planned is under *Planned, not scheduled* below.
 
@@ -56,6 +61,11 @@ each is in its document in [`formats/`](formats/README.md).
   records ([`formats/insta360-x6.md`](formats/insta360-x6.md)).
 - **Insta360 X4**: probably close to working; confirm the calibration string,
   IMU flag and scaling, and axis map.
+- **Insta360 X4 Air**: one owner's log so far; it opens on the X5's row of
+  the Insta360 reader's table, and a split recording's second part is
+  refused. Needs its own row (6K lenses, like the X6), which calibration
+  string it writes (its lenses are replaceable) and its IMU axes
+  ([`formats/insta360-x4.md`](formats/insta360-x4.md), with the X4).
 - **Insta360 ONE X2**: built, experimental (step 2 of the common camera
   model). Left: the stitch checked against Insta360 Studio's on the same
   frame, and the IMU axis map confirmed on a clip with deliberate turns.
@@ -151,7 +161,9 @@ each is in its document in [`formats/`](formats/README.md).
   run in CI on Mesa's software Vulkan (lavapipe). When the GPU stitch can't start
   on a clip (not enough graphics memory), it plays from the camera's
   preview file instead, if it has one, rather than showing no picture;
-  an export stops with the clip named.
+  an export stops with the clip named. Playing from the preview files is
+  built (View ▸ Play from preview files, offered when a clip plays
+  slowly); switching to them on its own comes with this.
 - **`lib/orbis-core/` as its own repository**, once its API settles.
 - **Highlight markers, follow-ups**: the camera's marks are built (X5,
   record type 10, [X5 format](formats/insta360-x5.md) §4.3): dots on the
@@ -212,9 +224,12 @@ each is in its document in [`formats/`](formats/README.md).
   - **Follow-ups**, each measured before anything changes: whether the seam
     flow should join near things (gloves, handlebars) more fully, against
     the sharpness it costs; the CPU stitch fallback's flow, which matches the
-    GPU's less well on near things; why the file's lens model is a little
-    off between the lenses, and chart calibration of the A1 and ONE X2; and
-    Insta360 Studio references for the cameras other than the X5.
+    GPU's less well on near things; lens 1's small turn against the
+    file's lens data, which Insta360 Studio and the camera's own thumbnail
+    both apply on the X5 (the X5's two radial lens models are read
+    exchanged since they measured better against Studio); chart
+    calibration of the A1 and ONE X2; and references for the cameras other
+    than the X5, perhaps the stitched thumbnail each file carries.
 - **Common camera model** -- waiting for clips: the camera-specific code
   sits behind one description of a clip, so each new camera is a reader, not
   a set of branches through the pipeline. Its next step needs real clips
@@ -261,7 +276,8 @@ each is in its document in [`formats/`](formats/README.md).
     the orientation across its own readout, and that is what the X5 stores
     there in place of the gyro. A track with an orientation and no gyro
     samples is stabilized from the orientation alone (built for the X5's
-    timelapse, then the DJI Avata 360's 4 kHz fused attitude; GoPro's
+    timelapse, then the DJI Avata 360's 4 kHz fused attitude, and the X5's
+    Interval photos, up only, one sample a photo; GoPro's
     `CORI` would plug in the same way), each frame placed by its own time
     (`orbiscore::ImuTrack::frameTimes`), since a timelapse's frames needn't be
     evenly spaced.
@@ -302,7 +318,8 @@ each is in its document in [`formats/`](formats/README.md).
   picture.
 - **360 photos**: `.insp` photos as stills on the timeline, reframed with
   keyframes like a clip, and exported as a flat photo; later DNG and HDR
-  brackets. An Interval series as a timelapse comes first (*Next*).
+  brackets. An Interval series as a timelapse comes first (*Next*,
+  built but for its GPS).
 - **Speed ramps**: speed keyframed inside a clip instead of one speed per
   clip. Every conversion between timeline and source time follows the
   curve: playback, export, keyframes, overlays, privacy regions,
@@ -319,8 +336,9 @@ each is in its document in [`formats/`](formats/README.md).
 - **ProRes export** (maybe DNxHR) for handing off to other editors, beside
   H.264 / H.265.
 - **Shooting modes**: the camera's special modes recognised and processed
-  as such -- timelapse, TimeShift / hyperlapse, bullet time. Sample clips
-  wanted.
+  as such -- TimeShift / hyperlapse, bullet time, Starlapse. Timelapse is
+  built on the X5 and the A1 (the X6's needs a clip to measure its IMU
+  axes). Sample clips wanted.
 - **HDR export**: keep HLG / PQ through to a 10-bit HDR export, beside the
   SDR route. The 10-bit SDR export (HEVC Main 10) is the base it builds
   on; it still needs HDR levels kept through the pipeline, HDR tagging and
