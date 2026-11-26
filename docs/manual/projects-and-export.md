@@ -85,8 +85,11 @@ recovery file is deleted again when you save, or when you choose
 crash, a power cut), the next time you open the project it offers the
 changes: **Recover** opens the project as it was at the last autosave, with
 the changes unsaved (save them to keep them); **Discard changes** opens it
-as it was last saved and deletes the recovery file. An untitled project
-(below) isn't autosaved until it's saved once.
+as it was last saved and deletes the recovery file. A recovery file made
+before the project was last saved has nothing the project doesn't: it's
+deleted without asking. Measurements written into the project file after
+the last autosave are kept when you recover. An untitled project (below)
+isn't autosaved until it's saved once.
 
 **Projects from before project folders** (a `.orp` file on its own, made
 with version 0.2.0 or older) still open with **Open project…** and save

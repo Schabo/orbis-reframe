@@ -296,9 +296,24 @@ public slots:
     // touching the file path / modified flag (autosave's recovery file).
     QByteArray fileContents(const QString &projectFile) const;
 
+    // What autosave's recovery file holds: fileContents(filePath()) and which
+    // saved edit it was made from (savedEditHash() of the file as last loaded
+    // or saved here), so that opening the project can tell whether a later
+    // save has these changes.
+    QByteArray recoveryContents() const;
+    // A hash of project file text without its measured values: it changes
+    // with a save, not with a measurement written into the file
+    // (writeMeasured()). Empty when the text isn't a project document.
+    static QByteArray savedEditHash(const QByteArray &projectFileText);
+    // The saved edit recovery file text `recoveryText` was made from
+    // (recoveryContents()); empty from a version that didn't say.
+    static QByteArray recoveryBase(const QByteArray &recoveryText);
+
     // Load the recovery file `autosaveFile` (written for `projectFile` by
-    // fileContents()) as project `projectFile` with unsaved changes: like
+    // recoveryContents()) as project `projectFile` with unsaved changes: like
     // load(projectFile), but from the recovery file's contents and modified.
+    // A measured value in the project file that the recovery file doesn't
+    // have yet (written just before the app stopped) is taken from the file.
     bool recover(const QString &autosaveFile, const QString &projectFile,
                  QString *error = nullptr);
 
@@ -367,6 +382,8 @@ private:
     // applyDocument) with m_measured's values in the clips of their sources;
     // the same bytes when nothing changes or it doesn't parse.
     QByteArray withMeasured(const QByteArray &document, const QDir *projectDir) const;
+    // Keep the measured values of project file text `document` in m_measured.
+    void noteMeasuredIn(const QByteArray &document, const QDir &projectDir);
     // Write the measured values into the project file on disk, changing
     // nothing else in it -- unsaved edits stay unsaved. Without a file
     // (untitled) the values wait for the first save; if writing fails,
@@ -421,6 +438,7 @@ private:
     Timeline *m_timeline = nullptr;
     MediaPool *m_mediaPool = nullptr;
     QString m_filePath;
+    QByteArray m_savedEdit; // savedEditHash() of m_filePath as last loaded or saved
     stitch::PreviewStitchConfig m_previewStitch;
     OutputSettings m_output;
     bool m_modified = false;

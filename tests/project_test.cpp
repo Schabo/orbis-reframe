@@ -1548,6 +1548,59 @@ void testMeasurementsSurviveUndo()
     CHECK(savedClip().syncAdjustMs == 9.0);
 }
 
+// A recovery file knows which save it was made from. A measurement written
+// into the project file doesn't make it stale, also when the app stopped
+// before the recovery file got the measurement too (recovering then takes the
+// measurement from the file); a save after it does, whatever the times say.
+void testRecoveryOfSave()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString file = projectfolder::create(tmp.path(), "Ride");
+    const QString recovery = Autosave::pathFor(file);
+    const QString a = tmp.path() + "/a.insv";
+    auto read = [](const QString &path) {
+        QFile f(path);
+        return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+    };
+    auto write = [](const QString &path, const QByteArray &bytes, int secondsFromNow) {
+        QFile f(path);
+        CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate) && f.write(bytes) == bytes.size());
+        f.flush(); // or closing it sets the time again
+        f.setFileTime(QDateTime::currentDateTime().addSecs(secondsFromNow),
+                      QFileDevice::FileModificationTime);
+    };
+
+    Project p;
+    p.timeline()->appendClip(a, 10000, 30.0);
+    CHECK(p.save(file));
+    Autosave autosave(&p, 3600 * 1000);
+    p.timeline()->setClipTrimOut(p.timeline()->clipAt(0).id, 6000);
+    autosave.tick();
+    CHECK(Autosave::hasRecovery(file));
+    CHECK(!Project::recoveryBase(read(recovery)).isEmpty());
+
+    // Measured, and the app stops before the recovery file is written again.
+    const QByteArray autosaved = read(recovery);
+    p.timeline()->setSourceSyncAdjust(a, 5.0);
+    write(recovery, autosaved, -60); // older than the project file
+    CHECK(Autosave::hasRecovery(file));
+    {
+        Project q;
+        CHECK(q.recover(recovery, file));
+        CHECK(q.modified() && q.timeline()->count() == 1);
+        if (q.timeline()->count() == 1)
+            CHECK(q.timeline()->clipAt(0).trimOutMs == 6000 &&
+                  q.timeline()->clipAt(0).syncAdjustMs == 5.0);
+    }
+
+    // Saved after it: stale, though newer than the project file.
+    CHECK(p.save(file));
+    CHECK(!QFileInfo::exists(recovery));
+    write(recovery, autosaved, 60);
+    CHECK(!Autosave::hasRecovery(file));
+}
+
 // A seam fine-tune measured by an older estimator (lens-1 rotation only, no
 // "method"; or on the X5's lens model before the exchange, method 2) isn't
 // read back: the clip is measured again.
@@ -3595,6 +3648,7 @@ int main(int argc, char **argv)
     testAutosave();
     testMeasurementsWritten();
     testMeasurementsSurviveUndo();
+    testRecoveryOfSave();
     testOldSeamMeasurement();
     testLensColourMethod();
     testProjectLibrary();

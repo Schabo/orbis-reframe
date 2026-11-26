@@ -12,6 +12,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QCryptographicHash>
 #include <QFileInfo>
 #include <QSaveFile>
 
@@ -1246,19 +1247,30 @@ std::string measuredStitchKey(const std::optional<stitch::LensCalibration> &cali
            lensGuardName(guard);
 }
 
+// Clip `jc`'s lens calibration in a project document.
+std::optional<stitch::LensCalibration> clipCalibration(const json &jc)
+{
+    if (jc.contains("stitch") && jc.at("stitch").is_object() &&
+        jc.at("stitch").contains("calibration"))
+        return lenscal::FromJson(jc.at("stitch").at("calibration"));
+    return std::nullopt;
+}
+
 // The same for clip `jc` of a project document, as the reader takes it:
 // `projectGuard` unless the clip has its own.
 std::string measuredStitchKey(const json &jc, stitch::PreviewStitchConfig::LensGuard projectGuard)
 {
-    std::optional<stitch::LensCalibration> calibration;
-    if (jc.contains("stitch") && jc.at("stitch").is_object()) {
-        const json &js = jc.at("stitch");
-        lensGuardFromJson(js, projectGuard);
-        if (js.contains("calibration"))
-            calibration = lenscal::FromJson(js.at("calibration"));
-    }
-    return measuredStitchKey(calibration, projectGuard);
+    if (jc.contains("stitch") && jc.at("stitch").is_object())
+        lensGuardFromJson(jc.at("stitch"), projectGuard);
+    return measuredStitchKey(clipCalibration(jc), projectGuard);
 }
+
+// A clip's keys of measured values in a project document.
+constexpr const char *kMeasuredKeys[] = {"syncFineTuneMs", "syncAdjustMs", "seamAdjust",
+                                         "lensColour"};
+
+// The recovery file's key for the saved edit it was made from.
+constexpr const char *kRecoveryOfKey = "recoveryOf";
 
 } // namespace
 
@@ -1332,6 +1344,38 @@ QByteArray Project::withMeasured(const QByteArray &document, const QDir *project
         return text;
     } catch (const std::exception &) {
         return document; // not a document of ours: left as it is
+    }
+}
+
+void Project::noteMeasuredIn(const QByteArray &document, const QDir &projectDir)
+{
+    using LensGuard = stitch::PreviewStitchConfig::LensGuard;
+    try {
+        const json doc = json::parse(document.begin(), document.end());
+        if (!doc.is_object() || !doc.contains("timeline") || !doc.at("timeline").is_object() ||
+            !doc.at("timeline").contains("clips") || !doc.at("timeline").at("clips").is_array())
+            return;
+        for (const json &jc : doc.at("timeline").at("clips")) {
+            if (!jc.is_object() || jc.value("flat", false))
+                continue;
+            const QString source =
+                resolvedPath(QString::fromStdString(jc.value("source", std::string())), projectDir);
+            const std::optional<stitch::LensCalibration> calibration = clipCalibration(jc);
+            Measured &m = m_measured[source];
+            if (jc.contains("syncFineTuneMs") && jc.at("syncFineTuneMs").is_number())
+                m.syncAdjustMs = jc.at("syncFineTuneMs").get<double>();
+            orbiscore::SeamCorrection seam;
+            int guard = -1;
+            if (jc.contains("seamAdjust") && seamAdjustFromJson(jc.at("seamAdjust"), seam, guard))
+                m.seam[measuredStitchKey(calibration, LensGuard(guard))] =
+                    seamAdjustToJson(seam, guard).dump();
+            orbiscore::LensColour colour;
+            if (jc.contains("lensColour") && lensColourFromJson(jc.at("lensColour"), colour, guard))
+                m.colour[measuredStitchKey(calibration, LensGuard(guard))] =
+                    lensColourToJson(colour, guard).dump();
+        }
+    } catch (const std::exception &) {
+        // not a document of ours: nothing measured in it
     }
 }
 
@@ -1411,6 +1455,7 @@ void Project::newProject()
     setPreviewStitch(stitch::PreviewStitchConfig{});
     setOutput(OutputSettings{});
     m_rebuilding = false;
+    m_savedEdit.clear();
     setFilePath(QString());
     setModified(false);
     clearUndoHistory();
@@ -1432,6 +1477,7 @@ int Project::resetWithClip(const MediaItem &source, int audioStreams,
     applySourceGaps(); // a part already gone
     m_rebuilding = false;
 
+    m_savedEdit.clear();
     setFilePath(QString());
     setModified(false);
     clearUndoHistory();
@@ -2104,6 +2150,7 @@ bool Project::save(const QString &path, QString *error)
         return false;
     }
 
+    m_savedEdit = savedEditHash(text);
     setFilePath(path);
     setModified(false);
     return true;
@@ -2171,6 +2218,40 @@ QByteArray Project::fileContents(const QString &projectFile) const
     return buildDocument(&projectDir) + "\n";
 }
 
+QByteArray Project::recoveryContents() const
+{
+    const QByteArray text = fileContents(m_filePath);
+    if (m_savedEdit.isEmpty())
+        return text;
+    json doc = json::parse(text.begin(), text.end()); // ours
+    doc[kRecoveryOfKey] = m_savedEdit.toStdString();
+    return QByteArray::fromStdString(doc.dump()) + "\n";
+}
+
+QByteArray Project::savedEditHash(const QByteArray &projectFileText)
+{
+    json doc = json::parse(projectFileText.begin(), projectFileText.end(), nullptr, false);
+    if (!doc.is_object())
+        return {};
+    if (doc.contains("timeline") && doc.at("timeline").is_object() &&
+        doc.at("timeline").contains("clips") && doc.at("timeline").at("clips").is_array())
+        for (json &jc : doc["timeline"]["clips"])
+            if (jc.is_object())
+                for (const char *key : kMeasuredKeys)
+                    jc.erase(key);
+    return QCryptographicHash::hash(QByteArray::fromStdString(doc.dump()),
+                                    QCryptographicHash::Sha256)
+        .toHex();
+}
+
+QByteArray Project::recoveryBase(const QByteArray &recoveryText)
+{
+    const json doc = json::parse(recoveryText.begin(), recoveryText.end(), nullptr, false);
+    if (!doc.is_object() || !doc.contains(kRecoveryOfKey) || !doc.at(kRecoveryOfKey).is_string())
+        return {};
+    return QByteArray::fromStdString(doc.at(kRecoveryOfKey).get<std::string>());
+}
+
 bool Project::recover(const QString &autosaveFile, const QString &projectFile, QString *error)
 {
     QFile file(autosaveFile);
@@ -2180,12 +2261,23 @@ bool Project::recover(const QString &autosaveFile, const QString &projectFile, Q
         return false;
     }
     const QDir projectDir = QFileInfo(projectFile).absoluteDir();
+    QByteArray saved;
+    if (QFile in(projectFile); in.open(QIODevice::ReadOnly | QIODevice::Text))
+        saved = in.readAll();
+    // A measurement goes into the project file first, then the recovery
+    // file: if the app stopped in between, the file has the newer value.
+    QHash<QString, Measured> session;
+    session.swap(m_measured);
+    noteMeasuredIn(saved, projectDir);
+    const QByteArray text = withMeasured(file.readAll(), &projectDir);
+    m_measured.swap(session);
     QString innerError;
-    if (!applyDocument(file.readAll(), &projectDir, &innerError)) {
+    if (!applyDocument(text, &projectDir, &innerError)) {
         if (error)
             *error = QStringLiteral("%1 %2").arg(autosaveFile, innerError);
         return false;
     }
+    m_savedEdit = savedEditHash(saved);
     setFilePath(projectFile);
     setModified(true);
     clearUndoHistory();
@@ -2210,6 +2302,7 @@ bool Project::load(const QString &path, QString *error)
         return false;
     }
 
+    m_savedEdit = savedEditHash(bytes);
     setFilePath(path);
     setModified(false);
     clearUndoHistory();
