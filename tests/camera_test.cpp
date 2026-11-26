@@ -16,6 +16,7 @@
 #include "ProbeClip.h"
 #include <orbis-core/stab/GyroStabilizer.h>
 #include <orbis-core/media/FisheyeDemux.h>
+#include <orbis-core/insta360/InsvModels.h>
 #include <orbis-core/insta360/InsvTrailer.h>
 #include "support/FfmpegFaults.h"
 #include "support/TestMedia.h"
@@ -807,6 +808,10 @@ void testIntervalPhotos(const std::filesystem::path& dir)
     CHECK(clip->calibrated && clip->lenses[0].calibration.focalRefW == 5376 &&
           std::abs(clip->lenses[0].calibration.fx - 4277.66) < 1e-6 &&
           std::abs(clip->lenses[1].calibration.fx - 4294.03) < 1e-6);
+    // The model's lens correction for photos (InsvModel::photoLensCorrection),
+    // where its videos have none.
+    CHECK(clip->lensCorrection == *orbiscore::FindInsvModel("Insta360 X5").photoLensCorrection &&
+          !(clip->lensCorrection == orbiscore::SeamCorrection{}));
     CHECK(std::abs(clip->timelapseIntervalSec - 10.374636) < 1e-6 && // the median gap
           std::abs(clip->captureScale - 30 * clip->timelapseIntervalSec) < 1e-9);
     CHECK(clip->recordedLocal == "2026-08-15T08:11:08" && clip->missingFirst.empty());

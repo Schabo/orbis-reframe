@@ -27,12 +27,27 @@ const LensProfile kX5LensProfiles[] = {
      190},
 };
 
+// The X5's photos' lens correction (Interval series; docs/formats/
+// insta360-x5.md §3.6): the same strings as its videos, but the camera's
+// own stitch of each photo (record 2) turns lens 1 its own way (yaw +0.43,
+// pitch -0.60 deg on 13 photos, ±0.03; on video +0.05 / +0.35), and
+// nothing in the trailer says so. The per-clip seam fit pooled over the
+// odd and over the even photos of the Demo series (75, Premium guard),
+// which agree within 0.01 deg and 0.006 %, the mean of the two: on each
+// half the other's fit brings the lenses from 0.53-0.55 to 0.05-0.06 deg
+// apart at the seam, where the camera's own turn leaves 0.33-0.35, and
+// the new stitcher's seam is the sharpest of those tried
+// (own_sharp_band_beside 0.654 against 0.607 uncorrected; 0.718 against
+// 0.707 with seam flow).
+// One series from one camera.
+const SeamCorrection kX5PhotoLensCorrection = {{-0.06, -0.75, 0.01}, {-0.00085, -0.000065}, 0.99925};
+
 const InsvModel kModels[] = {
     {"Insta360 X5", "Insta360", "z,-x,-y", "ProtectorS", "ProtectorA", 5312.0,
      {{3840, "8K"}, {2880, "5.7K"}, {1920, "4K"}, {0, nullptr}},
      {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv", false,
      {1.0, 0.0, 0.0, 0.0}, 0.0, {}, "y,z,x", true, -0.5, 1799.0, "-z,-x,y", kX5LensProfiles,
-     true},
+     true, &kX5PhotoLensCorrection},
     // IMU axes: the X5's "z,-x,-y", confirmed 2026-11-11 on an 8K 30
     // Standard clip with deliberate yaw/pitch/roll (docs/formats/insta360-x6.md):
     // residual_stab --diagnose horizon ~0.4 deg, correction/raw ratio 1.02 at
@@ -44,7 +59,7 @@ const InsvModel kModels[] = {
     {"Insta360 X6", "Insta360", "z,-x,-y", nullptr, nullptr, 7680.0,
      {{3840, "8K"}, {3008, "6K"}, {1920, "4K"}, {0, nullptr}},
      {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv", false,
-     {1.0, 0.0, 0.0, 0.0}, 0.0, {}, nullptr, true, -0.5, 0.0, nullptr, {}, false},
+     {1.0, 0.0, 0.0, 0.0}, 0.0, {}, nullptr, true, -0.5, 0.0, nullptr, {}, false, nullptr},
     // A lens per file at 5.7K, proxy LRV_…_11_….insv, telemetry in ms, no
     // lens-guard profiles (docs/formats/insta360-one-x2.md §1, §6, §8). IMU
     // axes: "z,x,y", the X5's turned 180° about sphere X -- measured on both
@@ -56,7 +71,7 @@ const InsvModel kModels[] = {
     {"Insta360 ONE X2", "Insta360", "z,x,y", nullptr, nullptr, 2880.0,
      {{2880, "5.7K"}, {0, nullptr}, {0, nullptr}, {0, nullptr}},
      {180.0, 0.0, 0.0}, 1000.0, "_00_", "_10_", "LRV", "_11_", ".insv", true,
-     {1.0, 0.0, 0.0, 0.0}, 0.0, {}, nullptr, false, -2.3, 0.0, nullptr, {}, false},
+     {1.0, 0.0, 0.0, 0.0}, 0.0, {}, nullptr, false, -2.3, 0.0, nullptr, {}, false, nullptr},
     // A 360 drone writing Insta360's .insv (docs/formats/antigravity-a1.md):
     // both lenses in one file, the proxy PRX_….prx with the clip's own name,
     // no lens-guard profiles, field 27 in the file. The 5.2K and 4K lens
@@ -77,7 +92,7 @@ const InsvModel kModels[] = {
      {{3840, "8K"}, {2624, "5.2K"}, {1920, "4K"}, {0, nullptr}},
      {-90.0, 90.0, 0.0}, 1.0, nullptr, nullptr, "PRX", nullptr, ".prx", true,
      {0.5, 0.5, -0.5, 0.5}, 9.7, {{0.006, 0.238, 0.468}, {-0.000749, 0.000016}, 0.998714}, nullptr,
-     true, -0.5, 0.0, nullptr, {}, false},
+     true, -0.5, 0.0, nullptr, {}, false, nullptr},
 };
 
 } // namespace

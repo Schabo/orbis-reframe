@@ -75,7 +75,7 @@ camera::ClipMetadata a1Clip()
 
 void testModels()
 {
-    // Insta360's files line the lenses up as they are; the A1's need a
+    // Insta360's videos line the lenses up as they are; the A1's need a
     // correction.
     for (const orbiscore::InsvModel& m : orbiscore::InsvModels()) {
         const bool none = m.lensCorrection == orbiscore::SeamCorrection{};
@@ -83,7 +83,17 @@ void testModels()
             CHECK(none);
         else
             CHECK(!none);
+        // A model without a photo correction gives a photo its videos'.
+        if (!m.photoLensCorrection)
+            CHECK(m.lensCorrectionFor(true) == m.lensCorrection);
+        CHECK(m.lensCorrectionFor(false) == m.lensCorrection);
     }
+    // The X5's photos need one of their own (InsvModel::photoLensCorrection):
+    // lens 1 turned about 0.75 deg in pitch, where its videos need none.
+    const orbiscore::InsvModel& x5 = orbiscore::FindInsvModel("Insta360 X5");
+    CHECK(x5.photoLensCorrection && x5.lensCorrection == orbiscore::SeamCorrection{});
+    CHECK(x5.lensCorrectionFor(true).lens1RotDeg[1] < -0.5 &&
+          x5.lensCorrectionFor(true).lens1RotDeg[1] > -1.0);
 }
 
 void testSetup()

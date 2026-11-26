@@ -404,6 +404,26 @@ v1.11.10):
   app takes it for a photo (`InsvModel::lensProfiles`). Photo `_012`
   stitched with Premium (ProtectorA) beside bare: the user judged the
   seams better with it (2026-11-25).
+- **Lens 1 sits differently than in video** ⚠️ (measured 2026-11-26 on the
+  Demo series, Premium guard). With the strings alone the lenses are
+  0.53-0.55° apart at the seam over the series (video: about 0.13°). The
+  camera's own stitch of each photo (record 2, 2560×1280) turns lens 1 by
+  yaw +0.43°, pitch -0.60° against ours, ±0.03° over 13 photos, where on
+  video it turns it +0.05° / +0.35°; nothing in the trailer says so (the
+  photo-only fields 63, 76, 82 and 183 are small integers). It also uses
+  the radial models as written (~0.1 % from ours that way, ±0.5 % with
+  them exchanged as in video, §5.3); the seam is the sharper exchanged,
+  and the lenses are the video's, so the stitch exchanges them on photos
+  too. The per-clip seam fit, pooled over the odd and over the even
+  photos (the fit of a single photo wanders in yaw: the seam's top is sky,
+  its bottom the vehicle), agrees on both halves: lens 1 yaw -0.06°, pitch
+  -0.75°, roll +0.01°, centre -0.085 % / -0.007 %, both lenses' radius
+  -0.075 %. Each half at the other's fit: 0.05-0.06° at the seam (the
+  camera's own turn: 0.33-0.35°). The app applies it to every X5 photo as
+  the model's photo lens correction (`InsvModel::photoLensCorrection`,
+  with the new stitcher, as the A1's). One series from one camera so far:
+  a bare-lens series and a second camera's would show whether it depends
+  on the guard or the unit.
 - **The IMU record holds one unit vector, the camera's gravity** ✅: the
   100 samples (1 ms apart) all carry the same accelerometer reading, of
   length 1.000 on every photo, and a zero gyro. It is gravity with the
@@ -784,8 +804,9 @@ trailing token `flag`. Each lens block ends in `w h lensType` (`10752 5376
   hardly moves (six riding clips, −0.02 to +0.05° with fx alone): the two
   lenses' errors pushed seam content the same way, towards lens 0, which
   only a reference shows. The app exchanges them for the X5
-  (`orbiscore::InsvModel::radialModelsExchanged`); not the A1, whose
-  string matches Studio as it stands. A chart calibration saved before
+  (`orbiscore::InsvModel::radialModelsExchanged`), on its photos too,
+  although the camera's photo stitch reads them as written (§3.6); not the
+  A1, whose string matches Studio as it stands. A chart calibration saved before
   the exchange still matches its camera's files.
 - **Insta360's stitches turn lens 1 against the file's calibration**,
   as the per-clip seam fit does. In seam-correction terms (lens 1 yaw /

@@ -167,8 +167,22 @@ struct InsvModel {
     // and the chart's reprojection falls on both lenses; fx alone does less
     // (docs/formats/insta360-x5.md §5.3). False on the A1, whose string
     // matches Studio as it stands (an exchange puts it 0.3 % off), and where
-    // unmeasured.
+    // unmeasured. The same on photos: the lenses are the same, and the X5's
+    // photos' seam is the sharper exchanged too, though the camera's own
+    // stitch of a photo uses the strings as written (§3.6).
     bool radialModelsExchanged;
+
+    // lensCorrection for the model's photos where it differs from its
+    // videos' -- the same strings, the lenses placed another way by the
+    // camera's photo pipeline. Null: a photo takes lensCorrection.
+    const SeamCorrection* photoLensCorrection;
+
+    // lensCorrection for a video, or for a photo (photoLensCorrection where
+    // the model has one).
+    const SeamCorrection& lensCorrectionFor(bool photo) const
+    {
+        return photo && photoLensCorrection ? *photoLensCorrection : lensCorrection;
+    }
 };
 
 // The model's corrections to its files' lens calibration

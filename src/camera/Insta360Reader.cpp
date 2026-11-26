@@ -617,7 +617,7 @@ CameraReader::Result readPhotoSeries(const std::vector<orbiscore::InsvStreamInfo
     out.mountYawDeg = model.mountDeg[0];
     out.mountPitchDeg = model.mountDeg[1];
     out.mountRollDeg = model.mountDeg[2];
-    out.lensCorrection = model.lensCorrection;
+    out.lensCorrection = model.lensCorrectionFor(true);
     readLensProfiles(out, notes, model);
     out.recordedLocal = LocalTimeFromDigits(std::to_string(notes.creation_time));
     if (out.recordedLocal.empty())
