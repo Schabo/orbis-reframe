@@ -83,7 +83,11 @@ it's open, a lock file (`<name>.orp.lock`) sits next to the project file.
 Opening the project in a second window says it's already open there and
 leaves it closed; close it in the first window, then open it again. If
 orbis-reframe stopped without closing properly, the lock file it left
-behind is ignored and the project opens as usual. Where the project's
+behind is ignored and the project opens as usual. That works only on the
+computer that left it: for a project in a shared folder that another
+computer had open when it stopped, the message names that computer, and
+the project stays locked until you delete `<name>.orp.lock` yourself (make
+sure orbis-reframe isn't running there first). Where the project's
 folder can't be written to, the project opens without a lock file.
 
 **Autosave.** While there are unsaved changes, orbis-reframe writes them
