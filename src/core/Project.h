@@ -7,6 +7,9 @@
 #include <QSet>
 
 #include <functional>
+#include <limits>
+#include <map>
+#include <string>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -358,13 +361,19 @@ private:
     // measured would otherwise show unsaved changes nobody made). Instead
     // the value goes straight into the project file, by writeMeasured().
     void onMeasured(int clipId);
-    // Write `clip`'s measured values into the clips of its source in the
-    // project file on disk, changing nothing else in it -- unsaved edits stay
-    // unsaved. Without a file (untitled) the values wait for the first save;
-    // if writing fails, they're saved with the next save or measured again
-    // next time. (Every clip of a source emits its own signal; once the file
-    // has the value, the writes after the first find nothing to change.)
-    void writeMeasured(const ClipItem &clip);
+    // Keep `clip`'s measured values in m_measured.
+    void noteMeasured(const ClipItem &clip);
+    // `document` (a project file's or a snapshot's text; `projectDir` as for
+    // applyDocument) with m_measured's values in the clips of their sources;
+    // the same bytes when nothing changes or it doesn't parse.
+    QByteArray withMeasured(const QByteArray &document, const QDir *projectDir) const;
+    // Write the measured values into the project file on disk, changing
+    // nothing else in it -- unsaved edits stay unsaved. Without a file
+    // (untitled) the values wait for the first save; if writing fails,
+    // they're saved with the next save or measured again next time. (Every
+    // clip of a source emits its own signal; once the file has the value,
+    // the writes after the first find nothing to change.)
+    void writeMeasured();
     // Add every timeline source that isn't in the media pool yet. Skipped
     // while rebuilding, unless `rebuilt` (the rebuild's own call at its end).
     void addTimelineSourcesToPool(bool rebuilt = false);
@@ -403,9 +412,10 @@ private:
     // touch m_filePath. Clears/reinstates m_rebuilding around the rebuild
     // like load() does.
     void restoreSnapshot(const QByteArray &bytes);
-    // Drop all undo/redo history and cancel any pending coalescing timer --
-    // called by newProject()/resetWithClip()/load(), which start a fresh
-    // editing session that undo shouldn't reach past.
+    // Drop all undo/redo history (and m_measured, which serves it) and cancel
+    // any pending coalescing timer -- called by newProject()/resetWithClip()/
+    // load(), which start a fresh editing session that undo shouldn't reach
+    // past.
     void clearUndoHistory();
 
     Timeline *m_timeline = nullptr;
@@ -428,6 +438,20 @@ private:
         bool operator==(const FileStamp &) const = default;
     };
     QHash<QString, FileStamp> m_mediaStamps;
+
+    // This session's measured values, per source file (onMeasured()). Not
+    // edits, so nothing undoes them: every copy of the project gets them --
+    // the file, the undo baseline when one lands, a state undo / redo brings
+    // back (withMeasured()). A seam fine-tune or lens colour holds only for
+    // the lens calibration and lens guard it was measured through, so they
+    // are kept per both and go only into a clip stitched that way: undoing a
+    // calibration change brings back the values measured through the old one.
+    struct Measured {
+        double syncAdjustMs = std::numeric_limits<double>::quiet_NaN();
+        std::map<std::string, std::string> seam;   // stitch key -> "seamAdjust" JSON
+        std::map<std::string, std::string> colour; // stitch key -> "lensColour" JSON
+    };
+    QHash<QString, Measured> m_measured;
 
     static constexpr int kMaxUndoDepth = 100;
     // Coalescing window: rapid-fire edits (a slider drag, a spinbox held

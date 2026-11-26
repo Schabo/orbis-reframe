@@ -1235,57 +1235,119 @@ void Project::onTimelineEdited()
         setModified(true);
 }
 
+namespace {
+
+// What a seam fine-tune or lens colour was measured through: the clip's lens
+// calibration and lens guard. With either one different it doesn't hold.
+std::string measuredStitchKey(const std::optional<stitch::LensCalibration> &calibration,
+                              stitch::PreviewStitchConfig::LensGuard guard)
+{
+    return (calibration ? lenscal::ToJson(*calibration).dump() : std::string()) + '\n' +
+           lensGuardName(guard);
+}
+
+// The same for clip `jc` of a project document, as the reader takes it:
+// `projectGuard` unless the clip has its own.
+std::string measuredStitchKey(const json &jc, stitch::PreviewStitchConfig::LensGuard projectGuard)
+{
+    std::optional<stitch::LensCalibration> calibration;
+    if (jc.contains("stitch") && jc.at("stitch").is_object()) {
+        const json &js = jc.at("stitch");
+        lensGuardFromJson(js, projectGuard);
+        if (js.contains("calibration"))
+            calibration = lenscal::FromJson(js.at("calibration"));
+    }
+    return measuredStitchKey(calibration, projectGuard);
+}
+
+} // namespace
+
 void Project::onMeasured(int clipId)
 {
     const ClipItem *clip = m_timeline->clipById(clipId);
-    if (!m_rebuilding && clip)
-        writeMeasured(*clip);
+    if (m_rebuilding || !clip)
+        return;
+    noteMeasured(*clip);
+    // An undo goes back to the baseline: with the value in it, undoing an
+    // edit made before or after the measurement keeps the value.
+    m_lastSettledSnapshot = withMeasured(m_lastSettledSnapshot, nullptr);
+    writeMeasured();
 }
 
-void Project::writeMeasured(const ClipItem &clip)
+void Project::noteMeasured(const ClipItem &clip)
+{
+    using LensGuard = stitch::PreviewStitchConfig::LensGuard;
+    Measured &m = m_measured[clip.sourcePath];
+    if (!std::isnan(clip.syncAdjustMs))
+        m.syncAdjustMs = clip.syncAdjustMs;
+    if (clip.seamAdjustGuard >= 0)
+        m.seam[measuredStitchKey(clip.lensCalibration, LensGuard(clip.seamAdjustGuard))] =
+            seamAdjustToJson(clip.seamCorrection, clip.seamAdjustGuard).dump();
+    if (clip.lensColourGuard >= 0)
+        m.colour[measuredStitchKey(clip.lensCalibration, LensGuard(clip.lensColourGuard))] =
+            lensColourToJson(clip.lensColour, clip.lensColourGuard).dump();
+}
+
+QByteArray Project::withMeasured(const QByteArray &document, const QDir *projectDir) const
+{
+    if (m_measured.isEmpty())
+        return document;
+    try {
+        json doc = json::parse(document.begin(), document.end());
+        if (!doc.is_object() || !doc.contains("timeline") || !doc.at("timeline").is_object() ||
+            !doc.at("timeline").contains("clips") || !doc.at("timeline").at("clips").is_array())
+            return document;
+        const stitch::PreviewStitchConfig::LensGuard projectGuard =
+            doc.contains("previewStitch") ? previewStitchFromJson(doc.at("previewStitch")).lensGuard
+                                          : stitch::PreviewStitchConfig{}.lensGuard;
+        bool changed = false;
+        for (json &jc : doc["timeline"]["clips"]) {
+            if (!jc.is_object() || jc.value("flat", false))
+                continue;
+            const QString stored = QString::fromStdString(jc.value("source", std::string()));
+            const auto it =
+                m_measured.constFind(projectDir ? resolvedPath(stored, *projectDir) : stored);
+            if (it == m_measured.cend())
+                continue;
+            json updated = jc;
+            if (!std::isnan(it->syncAdjustMs)) {
+                updated["syncFineTuneMs"] = it->syncAdjustMs;
+                updated.erase("syncAdjustMs"); // measured against the old timing, see the reader
+            }
+            const std::string key = measuredStitchKey(jc, projectGuard);
+            if (const auto seam = it->seam.find(key); seam != it->seam.end())
+                updated["seamAdjust"] = json::parse(seam->second);
+            if (const auto colour = it->colour.find(key); colour != it->colour.end())
+                updated["lensColour"] = json::parse(colour->second);
+            if (updated != jc) {
+                jc = std::move(updated);
+                changed = true;
+            }
+        }
+        if (!changed)
+            return document;
+        QByteArray text = QByteArray::fromStdString(doc.dump());
+        if (document.endsWith('\n'))
+            text += '\n';
+        return text;
+    } catch (const std::exception &) {
+        return document; // not a document of ours: left as it is
+    }
+}
+
+void Project::writeMeasured()
 {
     if (m_filePath.isEmpty())
         return;
     QFile in(m_filePath);
     if (!in.open(QIODevice::ReadOnly | QIODevice::Text))
         return;
-    json doc;
-    try {
-        doc = json::parse(in.readAll().toStdString());
-    } catch (const std::exception &) {
-        return;
-    }
+    const QByteArray saved = in.readAll();
     in.close();
-    if (!doc.is_object() || !doc.contains("timeline") || !doc.at("timeline").is_object() ||
-        !doc.at("timeline").contains("clips") || !doc.at("timeline").at("clips").is_array())
-        return;
-
     const QDir projectDir = QFileInfo(m_filePath).absoluteDir();
-    bool changed = false;
-    for (json &jc : doc["timeline"]["clips"]) {
-        if (!jc.is_object())
-            continue;
-        const QString source =
-            resolvedPath(QString::fromStdString(jc.value("source", std::string())), projectDir);
-        if (source != clip.sourcePath)
-            continue;
-        json updated = jc;
-        if (!std::isnan(clip.syncAdjustMs)) {
-            updated["syncFineTuneMs"] = clip.syncAdjustMs;
-            updated.erase("syncAdjustMs"); // measured against the old timing, see the reader
-        }
-        if (clip.seamAdjustGuard >= 0)
-            updated["seamAdjust"] = seamAdjustToJson(clip.seamCorrection, clip.seamAdjustGuard);
-        if (clip.lensColourGuard >= 0)
-            updated["lensColour"] = lensColourToJson(clip.lensColour, clip.lensColourGuard);
-        if (updated != jc) {
-            jc = std::move(updated);
-            changed = true;
-        }
-    }
-    if (!changed)
+    const QByteArray text = withMeasured(saved, &projectDir);
+    if (text == saved)
         return;
-    const QByteArray text = QByteArray::fromStdString(doc.dump()) + "\n";
     QSaveFile out(m_filePath);
     if (!out.open(QIODevice::WriteOnly | QIODevice::Text) || out.write(text) != text.size() ||
         !out.commit())
@@ -2191,6 +2253,7 @@ void Project::clearUndoHistory()
     m_pendingDirty = false;
     m_undoStack.clear();
     m_redoStack.clear();
+    m_measured.clear(); // what a load or new project brings has them already
     m_lastSettledSnapshot = snapshot();
     emit canUndoChanged(false);
     emit canRedoChanged(false);
@@ -2256,7 +2319,8 @@ void Project::undo()
     if (m_undoStack.isEmpty())
         return;
     m_redoStack.push_back(m_lastSettledSnapshot);
-    const QByteArray prev = m_undoStack.takeLast();
+    // Measured since it was settled, maybe: the values aren't undone.
+    const QByteArray prev = withMeasured(m_undoStack.takeLast(), nullptr);
     m_lastStepOnlyMedia = onlyMediaDiffers(prev, m_lastSettledSnapshot);
     restoreSnapshot(prev);
     m_lastSettledSnapshot = prev;
@@ -2270,7 +2334,7 @@ void Project::redo()
     if (m_redoStack.isEmpty())
         return;
     m_undoStack.push_back(m_lastSettledSnapshot);
-    const QByteArray next = m_redoStack.takeLast();
+    const QByteArray next = withMeasured(m_redoStack.takeLast(), nullptr);
     m_lastStepOnlyMedia = onlyMediaDiffers(next, m_lastSettledSnapshot);
     restoreSnapshot(next);
     m_lastSettledSnapshot = next;

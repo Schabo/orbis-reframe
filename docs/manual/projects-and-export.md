@@ -173,7 +173,10 @@ Measurements orbis-reframe makes for each clip (gyro sync and seam
 alignment) are saved in the project file, and privacy-blur scans in the
 project's `cache/` folder. A measurement is written into the project file as
 soon as it's done, without saving anything else: it doesn't count as an
-unsaved change, and your unsaved edits stay unsaved.
+unsaved change, and your unsaved edits stay unsaved. **Edit ▸ Undo**
+doesn't take a measurement back either. Undoing a change of **Lens guards**
+or **Lens calibration** brings back the seam alignment and lens colour
+measured with the setting before.
 
 ## Project settings
 

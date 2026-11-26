@@ -1466,6 +1466,88 @@ void testMeasurementsWritten()
     CHECK(Autosave::hasRecovery(file)); // rewritten after the file
 }
 
+// A camera calibration with lenses the reader takes, for tests that need one.
+stitch::LensCalibration sampleCalibration()
+{
+    stitch::LensCalibration cal;
+    cal.serial = "IAHEA25088AYDQ";
+    cal.lensGuard = 2;
+    cal.created = "2026-11-02T10:00:00Z";
+    cal.squareMm = 41.96;
+    for (int i = 0; i < 2; ++i) {
+        orbiscore::LensCalibExt e;
+        e.xi = 2, e.fx = 4294.03 - 16 * i, e.fy = 4293.86, e.cx = 2703.31 + 5370 * i;
+        e.cy = 2684.03, e.w = 10752, e.h = 5376, e.focalRefW = 5312;
+        cal.fileLenses[i] = e;
+        e.fx -= 23.7;
+        cal.lenses[i] = e;
+    }
+    return cal;
+}
+
+// A measured value isn't an edit, so undo and redo keep it: undoing an edit
+// made before the measurement or while it landed, and saving, still has it.
+// A seam fine-tune holds for the calibration it was measured through:
+// undoing a calibration change brings back the one measured through the old
+// calibration, redoing it the one measured through the new one, and the file
+// gets only the one for its own.
+void testMeasurementsSurviveUndo()
+{
+    using G = stitch::PreviewStitchConfig::LensGuard;
+    using M = stitch::PreviewStitchConfig::Method;
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString file = projectfolder::create(tmp.path(), "Ride");
+    const QString a = tmp.path() + "/a.insv";
+    auto savedClip = [&] {
+        Project q;
+        CHECK(q.load(file));
+        return q.timeline()->count() > 0 ? q.timeline()->clipAt(0) : ClipItem{};
+    };
+
+    Project p;
+    Timeline *tl = p.timeline();
+    tl->appendClip(a, 10000, 30.0);
+    tl->setSourceStitch(a, G::Premium, M::DepthSeam, std::nullopt);
+    CHECK(p.save(file) && p.load(file)); // an undo history that starts here
+
+    // Measured, then an edit, undone: the speed goes back, the value stays,
+    // and the save after it keeps it.
+    tl->setSourceSyncAdjust(a, 7.0);
+    tl->setClipSpeed(tl->clipAt(0).id, 2.0);
+    p.undo();
+    CHECK(tl->clipAt(0).speed == 1.0 && tl->clipAt(0).syncAdjustMs == 7.0);
+    CHECK(p.save(file));
+    CHECK(savedClip().speed == 1.0 && savedClip().syncAdjustMs == 7.0);
+    p.redo();
+    CHECK(tl->clipAt(0).speed == 2.0 && tl->clipAt(0).syncAdjustMs == 7.0);
+
+    // Measured while an edit hasn't settled yet: the same.
+    tl->setClipSpeed(tl->clipAt(0).id, 3.0);
+    tl->setSourceSyncAdjust(a, 9.0);
+    p.undo();
+    CHECK(tl->clipAt(0).speed == 2.0 && tl->clipAt(0).syncAdjustMs == 9.0);
+    p.redo();
+    CHECK(tl->clipAt(0).speed == 3.0 && tl->clipAt(0).syncAdjustMs == 9.0);
+
+    // Per calibration.
+    const stitch::LensCalibration cal = sampleCalibration();
+    tl->setSourceSeamCorrection(a, {{-0.5, 0.25, 0.1}}, int(G::Premium));
+    tl->setSourceStitch(a, G::Premium, M::DepthSeam, cal); // drops it
+    CHECK(tl->clipAt(0).seamAdjustGuard == -1);
+    tl->setSourceSeamCorrection(a, {{0.3, -0.1, 0.0}}, int(G::Premium));
+    p.undo();
+    CHECK(!tl->clipAt(0).lensCalibration && tl->clipAt(0).seamAdjustGuard == int(G::Premium) &&
+          tl->clipAt(0).seamCorrection.lens1RotDeg[1] == 0.25);
+    p.redo();
+    CHECK(tl->clipAt(0).lensCalibration == cal &&
+          tl->clipAt(0).seamAdjustGuard == int(G::Premium) &&
+          tl->clipAt(0).seamCorrection.lens1RotDeg[0] == 0.3);
+    // The file was saved without the calibration: it has the first one.
+    CHECK(!savedClip().lensCalibration && savedClip().seamCorrection.lens1RotDeg[1] == 0.25);
+    CHECK(savedClip().syncAdjustMs == 9.0);
+}
+
 // A seam fine-tune measured by an older estimator (lens-1 rotation only, no
 // "method"; or on the X5's lens model before the exchange, method 2) isn't
 // read back: the clip is measured again.
@@ -3512,6 +3594,7 @@ int main(int argc, char **argv)
     testChangeCount();
     testAutosave();
     testMeasurementsWritten();
+    testMeasurementsSurviveUndo();
     testOldSeamMeasurement();
     testLensColourMethod();
     testProjectLibrary();
