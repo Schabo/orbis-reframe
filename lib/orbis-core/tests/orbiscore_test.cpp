@@ -9,6 +9,7 @@
 #include <orbis-core/stitch/BlurQuads.h>
 #include <orbis-core/insta360/Calibration.h>
 #include <orbis-core/dji/DjiMeta.h>
+#include <orbis-core/gopro/Gpmf.h>
 #include <orbis-core/stitch/FisheyeProjection.h>
 #include <orbis-core/metadata/Gps.h>
 #include <orbis-core/Image.h>
@@ -25,6 +26,8 @@
 #include <orbis-core/stitch/SeamWindow.h>
 #include <orbis-core/Smooth.h>
 #include <orbis-core/Ycbcr.h>
+#include <cstring>
+
 #include "support/CommaLocale.h"
 #include "support/TestTrailer.h"
 
@@ -3649,6 +3652,155 @@ void testGpsAlignedByAcceleration()
 
 // The Y'CbCr -> R'G'B' rows the viewport converts lens planes with must match
 // the stitch's Vulkan ycbcr conversion for every matrix, range and depth.
+// GoPro's GPMF framing, and the one detail of it a plausible reader gets
+// wrong: the element count is 16-bit and its high byte shares the field a
+// naive reader calls `size` (u16 LE), so the two readings agree while the
+// count fits in 8 bits and disagree on the gyroscope — which carries 833 rows
+// a sample, and is the stream the whole feature needs. A reader that then
+// validates its payload ends stops walking and reports the gyro once per track
+// instead of once per sample. Measured over the sample tree's 18 blobs: 527
+// tag boundaries land where they should for the naive reading, 829 for this
+// one (docs/formats/gopro-max.md [[telemetry]]). The numbers are GS012267's
+// first sensor sample.
+namespace {
+
+// Big endian, as GPMF writes its numbers.
+Bytes beOf(uint64_t v, int n) {
+    Bytes b;
+    for (int i = n - 1; i >= 0; --i)
+        b.u8(uint8_t(v >> (8 * i)));
+    return b;
+}
+Bytes be64b(uint64_t v) { return beOf(v, 8); }
+Bytes be32b(uint32_t v) { return beOf(v, 4); }
+Bytes be16b(uint16_t v) { return beOf(v, 2); }
+Bytes f32b(float f) {
+    uint32_t bits;
+    std::memcpy(&bits, &f, 4);
+    return beOf(bits, 4);
+}
+Bytes gText(const char* s) {
+    Bytes b;
+    for (; *s; ++s)
+        b.u8(uint8_t(*s));
+    return b;
+}
+// `count` rows of three big-endian int16, each axis one greater than the last
+// so a wrong stride or byte order shows up.
+Bytes gRows(uint16_t count, int16_t base) {
+    Bytes b;
+    for (uint16_t i = 0; i < count; ++i)
+        for (int k = 0; k < 3; ++k)
+            b.raw(be16b(uint16_t(int16_t(base + k))).b);
+    return b;
+}
+
+// tag | type | bytes per sample | count (u16 BE) | payload, padded to 4.
+Bytes gScalar(const char* tag, char type, const Bytes& payload, uint16_t count = 1) {
+    Bytes b;
+    for (int i = 0; i < 4; ++i)
+        b.u8(uint8_t(tag[i]));
+    b.u8(uint8_t(type)).u8(uint8_t(payload.b.size() / (count ? count : 1)));
+    b.raw(be16b(count).b);
+    Bytes p = payload;
+    while (p.b.size() & 3)
+        p.b.push_back(0);
+    b.raw(p.b);
+    return b;
+}
+// tag | size (u32 BE) | nested tags. `declared` overrides the size, which a
+// real file uses to state an aggregate for the whole track rather than for the
+// sample: a 10 KB sensor sample declares a 76 KB `DEVC`.
+Bytes gStruct(const char* tag, const Bytes& body, uint32_t declared = 0) {
+    Bytes b;
+    for (int i = 0; i < 4; ++i)
+        b.u8(uint8_t(tag[i]));
+    b.raw(be32b(declared ? declared : uint32_t(body.b.size())).b);
+    b.raw(body.b);
+    return b;
+}
+Bytes gMtrx() {
+    const float m[9] = {0, -1, 0, 1, 0, 0, 0, 0, 1};
+    Bytes b;
+    for (int i = 0; i < 9; ++i)
+        b.raw(f32b(m[i]).b);
+    return b;
+}
+
+// One sensor sample: the accelerometer with its 209 rows, and the gyroscope
+// nested in it with 833 — past what fits in the count's low byte.
+Bytes gSensorSample() {
+    Bytes gyroBody;
+    gyroBody.raw(gScalar("STMP", 'J', be64b(171973)).b);
+    gyroBody.raw(gScalar("TSMP", 'L', be32b(833)).b);
+    gyroBody.raw(gScalar("STNM", 'c', gText("Gyroscope")).b);
+    gyroBody.raw(gScalar("MTRX", 'f', gMtrx()).b);
+    gyroBody.raw(gScalar("SIUN", 'c', gText("rad/s")).b);
+    gyroBody.raw(gScalar("SCAL", 's', be16b(939)).b);
+    gyroBody.raw(gScalar("GYRO", 's', gRows(833, 53), 833).b);
+    const Bytes gyro = gStruct("STRM", gyroBody);
+
+    Bytes accBody;
+    accBody.raw(gScalar("STMP", 'J', be64b(170287)).b);
+    accBody.raw(gScalar("TSMP", 'L', be32b(209)).b);
+    accBody.raw(gScalar("STNM", 'c', gText("Accelerometer")).b);
+    accBody.raw(gScalar("MTRX", 'f', gMtrx()).b);
+    accBody.raw(gScalar("SIUN", 'c', gText("m/s2")).b);
+    accBody.raw(gScalar("SCAL", 's', be16b(417)).b);
+    accBody.raw(gScalar("ACCL", 's', gRows(209, 3648), 209).b);
+    accBody.raw(gyro.b); // the gyroscope's stream, nested
+    const Bytes acc = gStruct("STRM", accBody);
+
+    Bytes devcBody;
+    devcBody.raw(gScalar("DVID", 'L', be32b(1)).b);
+    devcBody.raw(gScalar("DVNM", 'c', gText("GoPro Max")).b);
+    devcBody.raw(acc.b);
+    return gStruct("DEVC", devcBody, 76352);
+}
+
+} // namespace
+
+void testGoproGpmf()
+{
+    const Bytes one = gSensorSample();
+    const auto sample = orbiscore::ParseGpmfSensorSample(one.b.data(), one.b.size());
+    CHECK(sample.size() == 2);
+    if (sample.size() == 2) {
+        const auto& acc = sample[0];
+        CHECK(acc.name == "Accelerometer" && acc.unit == "m/s2");
+        CHECK(acc.stmpUs == 170287 && acc.tsmp == 209 && acc.scal == 417);
+        CHECK(acc.dataTag == "ACCL" && acc.count == 209);
+        CHECK(acc.rowsI16().size() == 209 * 3);
+        CHECK(acc.rowsI16().size() >= 3 && acc.rowsI16()[0] == 3648 && acc.rowsI16()[1] == 3649 &&
+              acc.rowsI16()[2] == 3650);
+        CHECK(acc.hasMtrx && acc.mtrx[0] == 0.0 && acc.mtrx[1] == -1.0 && acc.mtrx[3] == 1.0 &&
+              acc.mtrx[4] == 0.0 && acc.mtrx[8] == 1.0);
+        // The stream the naive framing loses: 833 rows, not the 65 it reads.
+        const auto& gyro = sample[1];
+        CHECK(gyro.name == "Gyroscope" && gyro.unit == "rad/s");
+        CHECK(gyro.stmpUs == 171973 && gyro.tsmp == 833 && gyro.scal == 939);
+        CHECK(gyro.dataTag == "GYRO" && gyro.count == 833);
+        CHECK(gyro.rowsI16().size() == 833 * 3);
+        CHECK(!gyro.rowsI16().empty() && gyro.rowsI16()[0] == 53);
+    }
+
+    // Two samples back to back: each `DEVC` starts one, and the first's
+    // declared size runs straight through the second, so the split has to
+    // follow the tag rather than the size.
+    Bytes two;
+    two.raw(one.b);
+    two.raw(one.b);
+    const auto track = orbiscore::ParseGpmfSensorTrack(two.b.data(), two.b.size());
+    CHECK(track.size() == 2);
+    CHECK(track.size() == 2 && track[0].size() == 2 && track[1].size() == 2);
+    CHECK(track.size() == 2 && track[1].size() == 2 && track[1][1].count == 833);
+
+    // Not GPMF at all: empty, rather than a walk off into the buffer.
+    const Bytes junk = gText("AAAA");
+    CHECK(orbiscore::ParseGpmfSensorTrack(junk.b.data(), junk.b.size()).empty());
+    CHECK(orbiscore::ParseGpmfSensorSample(nullptr, 0).empty());
+}
+
 void testYcbcrRows()
 {
     using orbiscore::YcbcrMatrix;
@@ -3743,6 +3895,7 @@ int main()
     testGpsAlignedBySpeed();
     testMotion();
     testGpsAlignedByAcceleration();
+    testGoproGpmf();
     testYcbcrRows();
 
     if (g_failures == 0)

@@ -39,6 +39,9 @@ add_library(orbiscore_metadata STATIC
     # DJI's djmd metadata samples (docs/formats/dji-360.md).
     orbis-core/dji/DjiMeta.h
     orbis-core/dji/DjiMeta.cpp
+    # GoPro's GPMF telemetry (docs/formats/gopro-max.md).
+    orbis-core/gopro/Gpmf.h
+    orbis-core/gopro/Gpmf.cpp
     # Lining the trailer's IMU up with the video, and what differs per model.
     orbis-core/insta360/InsvImu.h
     orbis-core/insta360/InsvImu.cpp

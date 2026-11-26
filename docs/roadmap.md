@@ -108,9 +108,17 @@ each is in its document in [`formats/`](formats/README.md).
   the `.OSV` (the `.LRF` keeps a quarter of them), the IMU's axes and the
   timing measured against the picture's own rotation on six clips.
   The Osmo 360, 360 II and Air follow when their clips can be measured.
-- **GoPro MAX / MAX2**: stitched in the camera into a cubemap over two
-  tracks, so a cubemap picture source behind `IStitchSource` instead of the
-  fisheye stitch; orientation from GoPro's GPMF metadata.
+- **GoPro MAX / MAX2**: stitched in the camera into an equi-angular cubemap
+  over two tracks of 4096×1344, three faces each, so a cubemap picture
+  source behind `IStitchSource` instead of the fisheye stitch. Measured on
+  four MAX takes: the face layout, the seam (a cross-fade over the ~64 px
+  overlap takes the boundary from 7–12× the surrounding image's gradient to
+  0.22–0.37, and what is left is parallax between the two lenses), the gyro
+  at ~800 Hz and the accelerometer at ~200 Hz with the axis map carried in
+  the file as `MTRX`, and the telemetry-to-video alignment (slope 1.000000,
+  gyro rms 0.36 ms against the packet PTS). Split takes place themselves in
+  the take by the camera's own clock, which runs across the whole take. The
+  MAX2's 6.4K layout is unverified.
 - **Insta360 Luna**: a flat camera, so the flat-video path; needs the
   10-bit / log handling there, through LUTs.
 - Not planned: the ONE X / ONE R / ONE RS.
