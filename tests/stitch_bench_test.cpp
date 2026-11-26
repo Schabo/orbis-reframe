@@ -192,7 +192,7 @@ cv::Mat Noise(int W, int H, int seed, double sigma = 1.5)
 cv::Mat Shift(const cv::Mat& m, int dx, int dy)
 {
     cv::Mat out;
-    const cv::Mat M = (cv::Mat_<double>(2, 3) << 1, 0, dx, 0, 1, dy);
+    const cv::Matx23d M(1, 0, dx, 0, 1, dy);
     cv::warpAffine(m, out, M, m.size(), cv::INTER_NEAREST, cv::BORDER_WRAP);
     return out;
 }
