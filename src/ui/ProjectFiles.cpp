@@ -18,12 +18,27 @@
 #include "../core/Project.h"
 #include "../core/ProjectFolder.h"
 #include "../core/ProjectLibrary.h"
+#include "../core/ProjectLock.h"
 #include "../core/Timeline.h"
 
 ProjectFiles::ProjectFiles(Project *project, ProjectLibrary *library, Autosave *autosave,
                            QWidget *window)
     : m_project(project), m_library(library), m_autosave(autosave), m_window(window)
 {
+    // Another project opened, the project saved as another file, or closed:
+    // the old file's lock goes.
+    m_pathWatch = QObject::connect(project, &Project::filePathChanged, window,
+                                   [this](const QString &path) {
+                                       if (m_lock && m_lock->projectFile() != absolute(path))
+                                           m_lock.reset();
+                                   });
+}
+
+ProjectFiles::~ProjectFiles() { QObject::disconnect(m_pathWatch); }
+
+QString ProjectFiles::absolute(const QString &projectFile)
+{
+    return projectFile.isEmpty() ? QString() : QFileInfo(projectFile).absoluteFilePath();
 }
 
 bool ProjectFiles::save()
@@ -48,10 +63,15 @@ bool ProjectFiles::saveAs(const QString &untitledName)
     dlg.setName(QFileInfo(from).completeBaseName());
     if (dlg.exec() != QDialog::Accepted)
         return false;
+    std::unique_ptr<ProjectLock> lock = claimLock(dlg.projectFile());
+    if (!lock)
+        return false;
     copyPlateScans(*m_project, m_project->filePath(), dlg.projectFile());
     copyLuts(*m_project, dlg.projectFile());
     QString error;
-    if (!m_project->save(dlg.projectFile(), &error)) {
+    const bool saved = m_project->save(dlg.projectFile(), &error);
+    settleLock(std::move(lock));
+    if (!saved) {
         QMessageBox::warning(m_window, tr("Could not save project"), error);
         return false;
     }
@@ -154,6 +174,39 @@ bool ProjectFiles::confirmDiscardAgain()
         if (!confirmDiscard())
             return false;
     return true;
+}
+
+std::unique_ptr<ProjectLock> ProjectFiles::claimLock(const QString &projectFile)
+{
+    const QString file = absolute(projectFile);
+    if (m_lock && m_lock->projectFile() == file)
+        return std::move(m_lock); // the window's own project, opened again
+    auto lock = std::make_unique<ProjectLock>(file);
+    if (lock->state() != ProjectLock::State::HeldElsewhere)
+        return lock;
+    const QString name = QFileInfo(file).completeBaseName();
+    const QString where =
+        lock->holderPid() == 0 ? tr("%1 is already open in another orbis-reframe window.").arg(name)
+        : lock->holderHost().isEmpty()
+            ? tr("%1 is already open in another orbis-reframe window (process %2).")
+                  .arg(name)
+                  .arg(lock->holderPid())
+            : tr("%1 is already open in orbis-reframe on %3 (process %2).")
+                  .arg(name)
+                  .arg(lock->holderPid())
+                  .arg(lock->holderHost());
+    QMessageBox::information(
+        m_window, tr("Project already open"),
+        where + QStringLiteral("\n\n") +
+            tr("Two windows on one project would overwrite each other's changes. Close it "
+               "there first."));
+    return nullptr;
+}
+
+void ProjectFiles::settleLock(std::unique_ptr<ProjectLock> lock)
+{
+    if (lock && lock->projectFile() == absolute(m_project->filePath()))
+        m_lock = std::move(lock);
 }
 
 bool ProjectFiles::askRecover(const QString &projectFile)

@@ -29,7 +29,7 @@ or some of its media files are missing.
 | Open a project | Double-click its card, or select it and press `Enter`. |
 | Start a new project | **New project…** (`Ctrl+N`). |
 | Open a project file that isn't listed | **Open other…** (`Ctrl+O`). |
-| Rename a project | Right-click its card ▸ **Rename…**, or select it and press `F2`. Both the project's folder and its project file get the new name. |
+| Rename a project | Right-click its card ▸ **Rename…**, or select it and press `F2`. Both the project's folder and its project file get the new name. Not while the project is open in another orbis-reframe window. |
 | Copy a project | Right-click its card ▸ **Duplicate…** and give the copy a name (`<name> copy` is suggested). The copy gets its own folder beside the original, with the project file, its `cache/` (privacy-blur scans and waveforms), its `luts/` and its `looks/`, but not its exports or screenshots. The media files aren't copied: both projects use the same clips. |
 | See a project's files | Right-click its card ▸ **Show in file manager**. |
 | Take a project off the list | Right-click its card ▸ **Remove from list**, or select it and press `Delete`. Its files are not deleted. |
@@ -76,6 +76,15 @@ whether to save them. Files still being imported can finish while the
 **New project** dialog or the **Open project** file picker is open; then it
 asks again before the project closes, so they aren't lost without a
 question.
+
+**One window per project.** A project can be open in one orbis-reframe
+window at a time: two windows would overwrite each other's changes. While
+it's open, a lock file (`<name>.orp.lock`) sits next to the project file.
+Opening the project in a second window says it's already open there and
+leaves it closed; close it in the first window, then open it again. If
+orbis-reframe stopped without closing properly, the lock file it left
+behind is ignored and the project opens as usual. Where the project's
+folder can't be written to, the project opens without a lock file.
 
 **Autosave.** While there are unsaved changes, orbis-reframe writes them
 every two minutes to a recovery file next to the project file

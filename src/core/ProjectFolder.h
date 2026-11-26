@@ -89,8 +89,9 @@ QString unpackedLutsDir(LutUse use = LutUse::Clip);
 
 // Rename the project whose file is `projectFile` to `newName`: a project
 // folder's folder and file (<parent>/<newName>/<newName>.orp), a loose
-// project's file only. Fails, with *error set, on a bad name or when the new
-// name is taken; nothing changes then. Returns the new project file.
+// project's file only. Fails, with *error set, on a bad name, when the new
+// name is taken, or while another orbis-reframe has the project open
+// (ProjectLock); nothing changes then. Returns the new project file.
 QString rename(const QString &projectFile, const QString &newName, QString *error = nullptr);
 
 // Copy the project whose file is `projectFile` as a new project `newName`

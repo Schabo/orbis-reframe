@@ -1,6 +1,7 @@
 #include "ProjectFolder.h"
 
 #include "Autosave.h"
+#include "ProjectLock.h"
 #include "ColorLut.h"
 #include "Project.h"
 #include "ZipReader.h"
@@ -290,6 +291,13 @@ QString rename(const QString &projectFile, const QString &newName, QString *erro
                                           : fi.canonicalFilePath()))
         return failWith(error, QObject::tr("%1 already exists. Choose another name.")
                                    .arg(QDir::toNativeSeparators(target.taken)));
+
+    // Not while another orbis-reframe has it open: that one would go on
+    // saving under the old name.
+    if (ProjectLock(fi.absoluteFilePath()).state() == ProjectLock::State::HeldElsewhere)
+        return failWith(error, QObject::tr("%1 is open in another orbis-reframe window. Close "
+                                           "it there first.")
+                                   .arg(fi.completeBaseName()));
 
     // An autosave recovery file goes along (Autosave::pathFor).
     const QString recovery = Autosave::pathFor(fi.absoluteFilePath());

@@ -258,6 +258,8 @@ add_library(reframe_model STATIC
     src/core/Log.h
     src/core/MediaPool.cpp
     src/core/MediaPool.h
+    src/core/ProjectLock.cpp
+    src/core/ProjectLock.h
     src/core/Timeline.cpp
     src/core/Timeline.h
     src/core/Project.cpp

@@ -10,8 +10,11 @@
 #include "Sharpen.h"
 #include "TitleClock.h"
 #include "LensCalibrationStore.h"
+#include "ProjectLock.h"
 
 #include <QCoreApplication>
+#include <QProcess>
+#include <QSysInfo>
 #include <QStandardPaths>
 
 namespace {
@@ -1599,6 +1602,63 @@ void testRecoveryOfSave()
     CHECK(!QFileInfo::exists(recovery));
     write(recovery, autosaved, 60);
     CHECK(!Autosave::hasRecovery(file));
+}
+
+// One editor per project: a second lock on a project file fails while the
+// first is held and names its process; the lock file goes with the lock; one
+// left by a process that's gone is taken over; a folder without room for a
+// lock file opens unguarded; Rename waits until the other editor closes it.
+void testProjectLock()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString file = projectfolder::create(tmp.path(), "Ride");
+    Project p;
+    CHECK(p.save(file));
+    CHECK(ProjectLock::pathFor(file) == file + ".lock");
+    {
+        ProjectLock first(file);
+        CHECK(first.state() == ProjectLock::State::Locked);
+        CHECK(QFileInfo::exists(ProjectLock::pathFor(file)));
+        ProjectLock second(file);
+        CHECK(second.state() == ProjectLock::State::HeldElsewhere);
+        CHECK(second.holderPid() == QCoreApplication::applicationPid() &&
+              second.holderHost().isEmpty());
+        QString error;
+        CHECK(projectfolder::rename(file, "Trip", &error).isEmpty() && !error.isEmpty());
+        CHECK(QFileInfo::exists(file));
+    }
+    CHECK(!QFileInfo::exists(ProjectLock::pathFor(file)));
+    CHECK(ProjectLock(file).state() == ProjectLock::State::Locked);
+
+    // Left by a crash: its process is gone.
+    QProcess gone;
+    gone.start("true", {});
+    CHECK(gone.waitForStarted());
+    const qint64 pid = gone.processId();
+    CHECK(gone.waitForFinished());
+    {
+        QFile f(ProjectLock::pathFor(file));
+        CHECK(f.open(QIODevice::WriteOnly));
+        f.write(QByteArray::number(pid) + "\n" +
+                QCoreApplication::applicationName().toUtf8() + "\n" +
+                QSysInfo::machineHostName().toUtf8() + "\n");
+    }
+    CHECK(ProjectLock(file).state() == ProjectLock::State::Locked);
+
+    // Renamed once nobody holds it, without leaving a lock file behind.
+    const QString renamed = projectfolder::rename(file, "Trip");
+    CHECK(!renamed.isEmpty() && !QFileInfo::exists(ProjectLock::pathFor(renamed)));
+
+    // A folder that can't take a lock file (not checked as root, who can).
+    const QString readOnly = tmp.path() + "/ro";
+    CHECK(QDir().mkpath(readOnly));
+    CHECK(p.save(readOnly + "/Ride.orp"));
+    QFile::setPermissions(readOnly, QFileDevice::ReadOwner | QFileDevice::ExeOwner);
+    if (!QFileInfo(readOnly).isWritable())
+        CHECK(ProjectLock(readOnly + "/Ride.orp").state() == ProjectLock::State::Unavailable);
+    QFile::setPermissions(readOnly, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                        QFileDevice::ExeOwner);
 }
 
 // A seam fine-tune measured by an older estimator (lens-1 rotation only, no
@@ -3649,6 +3709,7 @@ int main(int argc, char **argv)
     testMeasurementsWritten();
     testMeasurementsSurviveUndo();
     testRecoveryOfSave();
+    testProjectLock();
     testOldSeamMeasurement();
     testLensColourMethod();
     testProjectLibrary();

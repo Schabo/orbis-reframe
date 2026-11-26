@@ -456,6 +456,9 @@ exports you save yourself, it only writes:
   changes: the autosave recovery file
   ([Autosave](projects-and-export.md#one-folder-per-project)). It's deleted
   when you save or discard the changes.
+- `<name>.orp.lock` next to a project file, while the project is open: it
+  keeps a second window from opening it
+  ([One window per project](projects-and-export.md#one-folder-per-project)).
 - `~/.local/share/orbis-reframe/projects.json`: the project library's list
   and the projects folder. Deleting it empties the list (projects in the
   projects folder still show up); no project is deleted.

@@ -40,6 +40,7 @@
 #include "../core/ClipItem.h"
 #include "../core/Project.h"
 #include "../core/ProjectFolder.h"
+#include "../core/ProjectLock.h"
 #include "../core/Timeline.h"
 #include "../render/EquirectViewportWindow.h"
 
@@ -110,6 +111,18 @@ void MainWindow::bindEmptyTimeline()
 
 void MainWindow::openProject(const QString &projectPath)
 {
+    // Not opened: the window stays as it was -- on the library at startup
+    // (a project given on the command line), which then lists the projects.
+    const auto notOpened = [this] {
+        if (m_pages->currentWidget() == m_libraryPage)
+            showLibrary();
+    };
+    // First: another window that has it open has its recovery file too.
+    std::unique_ptr<ProjectLock> lock = m_files->claimLock(projectPath);
+    if (!lock) {
+        notOpened();
+        return;
+    }
     QString error;
     const bool recover = m_files->askRecover(projectPath);
     const QString recovery = Autosave::pathFor(projectPath);
@@ -121,9 +134,11 @@ void MainWindow::openProject(const QString &projectPath)
     if (loaded && recover)
         m_autosave->tick(); // the recovery file is this session's now
     m_rebindingModel = false;
+    m_files->settleLock(std::move(lock));
     if (!loaded) {
         updateCacheDirs(m_project->filePath());
         QMessageBox::warning(this, tr("Could not open project"), error);
+        notOpened();
         return;
     }
     m_files->noteOpened();
@@ -182,12 +197,14 @@ void MainWindow::newProject()
     m_project->setOutput(made->output);
     m_rebindingModel = false;
     // Saved straight away, so the project is on disk and in the library
-    // from the start.
+    // from the start. (The folder is new: no other window has it.)
     QString error;
-    if (!m_project->save(made->file, &error))
+    std::unique_ptr<ProjectLock> lock = m_files->claimLock(made->file);
+    if (lock && !m_project->save(made->file, &error))
         QMessageBox::warning(this, tr("Could not save project"), error);
-    else
+    else if (lock)
         m_files->noteOpened();
+    m_files->settleLock(std::move(lock));
     showEditor();
     bindEmptyTimeline();
 }

@@ -1,22 +1,26 @@
 #pragma once
 
 #include <QCoreApplication>
+#include <QMetaObject>
 #include <QString>
 
+#include <memory>
 #include <optional>
 
 #include "../core/OutputSettings.h"
 
 class Autosave;
 class Project;
+class ProjectLock;
 class ProjectLibrary;
 class QWidget;
 
 // The project as files, and asking the user about them: saving (into a new
 // project folder for Save as, bringing the plate scans along), the "unsaved
 // changes" and "recover?" questions, the Open project and New project
-// dialogs, and the library's list of recent projects. Loading a project
-// into the window -- binding the panels and playback to it -- is
+// dialogs, the library's list of recent projects, and the project's lock
+// (ProjectLock: no other orbis-reframe opens it meanwhile). Loading a
+// project into the window -- binding the panels and playback to it -- is
 // MainWindow's.
 class ProjectFiles {
     Q_DECLARE_TR_FUNCTIONS(ProjectFiles)
@@ -24,6 +28,7 @@ class ProjectFiles {
 public:
     // `window`: the dialogs' parent.
     ProjectFiles(Project *project, ProjectLibrary *library, Autosave *autosave, QWidget *window);
+    ~ProjectFiles();
 
     // Save in place; an untitled project goes to saveAs(). False when it
     // wasn't saved (cancelled, or the error was shown).
@@ -39,6 +44,16 @@ public:
     // in the project while one is open. Asks again if the project changed
     // since that answer, until it hasn't.
     bool confirmDiscardAgain();
+
+    // Before opening or writing `projectFile` as the window's project: its
+    // lock. Null, after telling the user, when another orbis-reframe has it
+    // open. The caller hands it to settleLock() once the open or save is
+    // done, whether it worked or not.
+    std::unique_ptr<ProjectLock> claimLock(const QString &projectFile);
+    // Hold `lock` if the project is now at its file (the open or save
+    // worked); else let it go. The lock held before goes when the project
+    // leaves its file (another opened, saved as, closed).
+    void settleLock(std::unique_ptr<ProjectLock> lock);
 
     // Before opening `projectFile`: if it has changes autosaved but never
     // saved, ask whether to recover them (else they're thrown away); an
@@ -70,6 +85,8 @@ public:
     static void copyLuts(Project &project, const QString &toFile);
 
 private:
+    // `projectFile` made absolute; empty stays empty.
+    static QString absolute(const QString &projectFile);
     // Saved: drop the scans in the project's cache no clip or undo step
     // names (PlateScanCache::prune).
     void prunePlateScans();
@@ -77,6 +94,8 @@ private:
     Project *m_project;
     ProjectLibrary *m_library;
     Autosave *m_autosave;
+    std::unique_ptr<ProjectLock> m_lock; // the project file's, while it's open here
+    QMetaObject::Connection m_pathWatch;
     quint64 m_answeredAt = 0; // the changeCount() confirmDiscard() last answered for
     QWidget *m_window;
 };
