@@ -132,8 +132,8 @@ each is in its document in [`formats/`](formats/README.md).
   compression, its own pass; not HDR export), colour pop and split
   toning, a motion trail (neighbouring frames, as the computed ND), speed
   zoom, tilt-shift, lens flare held on the sun's place on the sphere and
-  light leaks, chromatic aberration, letterbox bars, and stylised effects
-  (VHS, glitch, scanlines).
+  light leaks, chromatic aberration, letterbox bars, stylised effects
+  (VHS, glitch, scanlines) and handheld shake on the view.
   The split screen layouts (side by side, stacked, grid) join the library
   as **Layouts** to drop on a clip: a drop sets the clip's split, as its
   **Split screen** section does. Split screen isn't an effect -- it is
@@ -275,8 +275,14 @@ each is in its document in [`formats/`](formats/README.md).
   noise filters as presets.
 - **Keyframes**: hold keys, a smooth curve through all keys (no overshoot on
   the field of view), a default easing for new keys.
+- **Move presets**: popular camera moves dropped on a clip as ordinary
+  keyframes -- spin, tiny planet out and back, planet spin, tunnel dive,
+  barrel roll, planet to globe, look back, drone pull-back, crash zoom,
+  pan sweep, tilt reveal, slow push-in, fisheye pop. Full turns need keys
+  that can turn more than half way round (intermediate keys first,
+  unwrapped angles later).
 - **Transitions**: more types (dip to a colour, wipes, a move through the
-  sphere), dragging the edges to set the length, an equal-power sound
+  sphere, a whip pan), dragging the edges to set the length, an equal-power sound
   crossfade, transitions on overlay tracks.
 - **Track subject**: automatic zoom; finding a lost subject again.
 - **Smaller project files**: privacy regions dominate the file; store fewer
@@ -347,6 +353,7 @@ Not wanted, unless something changes a lot:
 - Flatpak.
 - Network access outside the opt-in music library.
 - Translational stabilization by depth and view synthesis.
+- Dolly zoom: one viewpoint can't fake the camera moving forward.
 - Thumbnails along the video track, backward tracking in Track subject --
   unless users ask.
 - Split screen panes that pick their own angles: each pane's keyframes
