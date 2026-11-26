@@ -281,9 +281,15 @@ each is in its document in [`formats/`](formats/README.md).
   pan sweep, tilt reveal, slow push-in, fisheye pop. Full turns need keys
   that can turn more than half way round (intermediate keys first,
   unwrapped angles later).
-- **Transitions**: more types (dip to a colour, wipes, a move through the
-  sphere, a whip pan), dragging the edges to set the length, an equal-power sound
-  crossfade, transitions on overlay tracks.
+- **Transitions**: more types -- dip to a colour, wipes (straight, clock,
+  iris, barn door), a whip pan, push / slide, zoom blur, spin blur, luma
+  fade, blur dissolve, flash and glitch; and 360 ones that move the view
+  across the cut: sky swap, ground swap, planet swap, tunnel dive, globe
+  roll, portal, spin through, and matching the direction of travel. A 360
+  transition is an animated offset on top of each clip's keyframes, not
+  keys of its own. Also: J and L cuts and an equal-power crossfade for
+  the sound, dragging the edges to set the length, transitions on
+  overlay tracks.
 - **Track subject**: automatic zoom; finding a lost subject again.
 - **Smaller project files**: privacy regions dominate the file; store fewer
   frames per region (those interpolation reproduces) and fewer numbers per
