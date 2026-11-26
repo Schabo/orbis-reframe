@@ -20,7 +20,8 @@ class QToolButton;
 // viewport pose immediately; when reframe authoring is armed (the transport
 // bar's Reframe toggle) it also writes a keyframe at the playhead, exactly
 // like a viewport drag commit. The fields reflect the current pose as playback
-// / scrubbing moves.
+// / scrubbing moves, all but one the user is busy with (a slider held, a
+// number half typed).
 //
 // All angles are shown in degrees, the field of view corner to corner; the
 // signal / setter use radians to match ReframePose. Distortion is Auto

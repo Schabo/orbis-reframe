@@ -957,6 +957,64 @@ void testReframeFisheye(SettingsSidebar &bar)
     reframe->setPose(ReframePose{});
 }
 
+// Playback moves the pose under the panel every frame: a slider held down
+// and a half-typed field keep what the user is doing, the others follow, and
+// the edit when it comes changes only its own field of the latest pose.
+void testReframeWhilePlaying(SettingsSidebar &bar)
+{
+    ReframePanel *reframe = bar.reframe();
+    auto *fisheye = find<QSlider>(reframe, "reframeFisheye");
+    auto *fov = find<QDoubleSpinBox>(reframe, "reframeFov");
+    if (!fisheye || !fov)
+        return;
+    bar.setCurrentIndex(SettingsSidebar::VideoTab);
+    reframe->setExpanded(true);
+    reframe->setClip(false);
+    reframe->setPose(ReframePose{});
+    QSignalSpy edited(reframe, &ReframePanel::poseEdited);
+
+    fisheye->setSliderDown(true);
+    fisheye->setSliderPosition(60);
+    ReframePose playing;
+    playing.yaw = 0.5f;
+    playing.fisheye = 0.2f;
+    reframe->setPose(playing);
+    CHECK(fisheye->sliderPosition() == 60 && edited.isEmpty());
+    fisheye->setSliderDown(false);
+    CHECK(edited.count() == 1);
+    if (edited.count() == 1) {
+        const ReframePose p = edited.at(0).at(0).value<ReframePose>();
+        CHECK(p.fisheye == 0.6f && p.yaw == 0.5f);
+    }
+    reframe->setPose(playing); // a frame later
+    CHECK(fisheye->value() == 20);
+
+    bar.activateWindow();
+    fov->setFocus();
+    QApplication::processEvents();
+    if (fov->hasFocus()) {
+        fov->selectAll();
+        QTest::keyClicks(fov, QStringLiteral("80"));
+        playing.yaw = 0.7f;
+        reframe->setPose(playing);
+        CHECK(fov->cleanText() == QStringLiteral("80"));
+        QTest::keyClick(fov, Qt::Key_Return);
+        CHECK(edited.count() == 2);
+        if (edited.count() == 2) {
+            const ReframePose p = edited.at(1).at(0).value<ReframePose>();
+            CHECK(std::abs(p.fov - 80.0 * std::numbers::pi / 180.0) < 1e-6 && p.yaw == 0.7f);
+        }
+        // Focused but not typing: it follows the pose again.
+        playing.fov = ReframePose{}.fov;
+        reframe->setPose(playing);
+        CHECK(std::abs(fov->value() * std::numbers::pi / 180.0 - playing.fov) < 1e-3);
+        fov->clearFocus();
+    } else {
+        std::fprintf(stderr, "note: no keyboard focus here, typing check skipped\n");
+    }
+    reframe->setPose(ReframePose{});
+}
+
 // The View buttons: each sets the whole view shape in one edit and keeps the
 // yaw; the values fit the field of view's range (none clamped); the buttons
 // are greyed out while tracking runs and hidden for a flat clip.
@@ -1351,6 +1409,7 @@ int main(int argc, char **argv)
     testReframeNatural(bar);
     testReframeViewPresets(bar);
     testReframeFisheye(bar);
+    testReframeWhilePlaying(bar);
     testTransitionTab(bar);
     testColourLut(bar);
     testMediaInfoProfile(bar);

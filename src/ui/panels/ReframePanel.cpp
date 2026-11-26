@@ -348,25 +348,41 @@ void ReframePanel::showPose(const ReframePose &pose)
         return d - 180.0;
     };
 
+    // While playing, the pose changes with every frame. A field the user is
+    // busy with keeps what they are doing: a held slider would jump back
+    // under the mouse (and its release, finding nothing moved, edit
+    // nothing), a half-typed number would be thrown away. The edit, when it
+    // comes, changes only its own field of the pose shown by then.
+    const auto typing = [](const QDoubleSpinBox *b) {
+        return b->hasFocus() && b->cleanText() != b->textFromValue(b->value());
+    };
+    const auto showPercent = [this](QSlider *slider, QLabel *value, int percent) {
+        if (slider->isSliderDown())
+            return;
+        slider->setValue(percent);
+        value->setText(tr("%1%").arg(percent));
+    };
+
     m_pose = pose;
     m_updating = true;
-    m_yaw->setValue(wrapDeg(pose.yaw * kRadToDeg));
-    m_pitch->setValue(pose.pitch * kRadToDeg);
-    m_roll->setValue(wrapDeg(pose.roll * kRadToDeg));
-    m_fov->setMaximum(view::maxFov(pose) * kRadToDeg);
-    m_fov->setValue(pose.fov * kRadToDeg);
-    const int percent = static_cast<int>(std::lround(view::distortionOf(pose) * 100.0));
+    if (!typing(m_yaw))
+        m_yaw->setValue(wrapDeg(pose.yaw * kRadToDeg));
+    if (!typing(m_pitch))
+        m_pitch->setValue(pose.pitch * kRadToDeg);
+    if (!typing(m_roll))
+        m_roll->setValue(wrapDeg(pose.roll * kRadToDeg));
+    if (!typing(m_fov)) {
+        m_fov->setMaximum(view::maxFov(pose) * kRadToDeg);
+        m_fov->setValue(pose.fov * kRadToDeg);
+    }
     m_distortionAuto->setChecked(pose.distortionIsAuto());
     m_distortion->setEnabled(!pose.distortionIsAuto() && !m_trackRunning);
-    m_distortion->setValue(percent);
-    m_distortionValue->setText(tr("%1%").arg(percent));
+    showPercent(m_distortion, m_distortionValue,
+                static_cast<int>(std::lround(view::distortionOf(pose) * 100.0)));
     const int natural = static_cast<int>(std::lround(pose.panini * 100.0f));
-    m_natural->setValue(natural);
-    m_naturalValue->setText(tr("%1%").arg(natural));
+    showPercent(m_natural, m_naturalValue, natural);
     m_naturalFull->setChecked(natural >= 100);
-    const int fisheye = static_cast<int>(std::lround(pose.fisheye * 100.0f));
-    m_fisheye->setValue(fisheye);
-    m_fisheyeValue->setText(tr("%1%").arg(fisheye));
+    showPercent(m_fisheye, m_fisheyeValue, static_cast<int>(std::lround(pose.fisheye * 100.0f)));
     m_updating = false;
 }
 
