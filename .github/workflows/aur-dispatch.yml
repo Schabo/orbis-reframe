@@ -1,0 +1,39 @@
+# Notifies the community AUR package repo when a release is published, so it
+# can bump pkgver from this release's tag (vX.Y.Z). Draft releases do not
+# fire this — only published ones, same as announce.yml.
+#
+# Needs the secret AUR_PKGBUILD_DISPATCH_TOKEN: a fine-grained PAT for
+# scardracs/orbis-reframe-pkgbuild with Contents: Read and write. Without it
+# the job only notes that and exits 0 (release announce must not fail).
+name: Dispatch AUR update
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    name: orbis-reframe-pkgbuild
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: repository_dispatch upstream-release
+        env:
+          GH_TOKEN: ${{ secrets.AUR_PKGBUILD_DISPATCH_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+              echo "::notice::No AUR_PKGBUILD_DISPATCH_TOKEN: AUR bump not dispatched"
+              exit 0
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9] ]]; then
+              echo "Unexpected release tag: $TAG" >&2
+              exit 1
+          fi
+          gh api repos/scardracs/orbis-reframe-pkgbuild/dispatches --input - <<EOF
+          {"event_type":"upstream-release","client_payload":{"tag":"$TAG"}}
+          EOF
+          echo "Dispatched upstream-release with tag $TAG"
