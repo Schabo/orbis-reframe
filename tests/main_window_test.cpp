@@ -499,6 +499,27 @@ void testOpenTakeFile(const Ctx &c)
     CHECK(c.project->recheckMissingMedia().gone == QStringList{lead});
 }
 
+// The window's size from the last close comes back at the next start.
+void testWindowGeometry()
+{
+    std::printf("  window size\n");
+    QSize size;
+    {
+        MainWindow w(nullptr, standIns());
+        w.resize(780, 640); // inside the offscreen platform's 800x800 screen
+        size = w.size();
+        CHECK(w.close());
+    }
+    CHECK(!QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+               .value(QStringLiteral("mainWindow/geometry"))
+               .toByteArray()
+               .isEmpty());
+    {
+        MainWindow w(nullptr, standIns());
+        CHECK(w.size() == size);
+    }
+}
+
 void testOpenClip(const Ctx &c)
 {
     c.w->openClip(c.clipA);
@@ -3644,6 +3665,7 @@ int main(int argc, char **argv)
             testOpenTakeFile(c); // replaces the project
         }
     }
+    testWindowGeometry();
 
     if (g_failures == 0)
         std::printf("main_window_test: all checks passed\n");

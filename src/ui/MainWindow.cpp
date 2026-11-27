@@ -139,6 +139,17 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     setupMediaCheck();
     connectFullScreen();
 
+    // The size (and the place, where the platform lets a window choose it)
+    // from the last close; 1280x760 the first time.
+    const QByteArray geometry =
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .value(QStringLiteral("mainWindow/geometry"))
+            .toByteArray();
+    if (geometry.isEmpty())
+        resize(1280, 760);
+    else
+        restoreGeometry(geometry);
+
     m_playbackThread->start();
     setEditorActive(false); // the library is shown until a project opens
 }
@@ -1572,6 +1583,11 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     if (m_files->confirmDiscard()) {
+        // The next start opens at this size and, where the platform lets a
+        // window choose it, in the same place. Cancelling the close keeps
+        // the old value.
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("mainWindow/geometry"), saveGeometry());
         // Let the viewport release its swapchain while it's still shown.
         // Closing destroys the window, which hides it first and only then
         // tells QVulkanWindow (SurfaceAboutToBeDestroyed); with Qt 6.8 on
