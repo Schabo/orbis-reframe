@@ -275,6 +275,59 @@ void testKeyDiamondClick()
     CHECK(sel.last().at(0).toInt() == 1);
 }
 
+// A right-click on a reframe keyframe's diamond offers Copy keyframe. Choosing
+// it selects the clip and asks for that key's copy. A right-click off a
+// diamond offers no Copy keyframe.
+void testReframeKeyCopyMenu()
+{
+    Fixture f;
+    TimelineWidget::Clip a, b;
+    a.id = 1;
+    a.label = "a";
+    a.trimOutMs = a.sourceDurationMs = 10000;
+    a.keySourceMs = {3000, 7000};
+    b.id = 2;
+    b.label = "b";
+    b.trimOutMs = b.sourceDurationMs = 10000;
+    b.keySourceMs = {5000};
+    f.w.setClips({a, b});
+    const int keyY = kRulerH + kMainH - 5; // the diamonds' row
+
+    QSignalSpy copy(&f.w, &TimelineWidget::reframeKeyCopyRequested);
+    QSignalSpy sel(&f.w, &TimelineWidget::clipSelected);
+    const auto menuAt = [&](QPoint at, bool choose) {
+        QString text;
+        QTimer::singleShot(0, [&] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if (!menu)
+                return;
+            QAction *act = menu->findChild<QAction *>(QStringLiteral("keyframeCopyAction"));
+            if (act)
+                text = act->text();
+            if (act && choose)
+                menu->setActiveAction(act);
+            QTest::keyClick(menu, act && choose ? Qt::Key_Return : Qt::Key_Escape);
+        });
+        QContextMenuEvent e(QContextMenuEvent::Mouse, at, f.w.mapToGlobal(at));
+        QApplication::sendEvent(&f.w, &e);
+        return text;
+    };
+
+    CHECK(menuAt(QPoint(Fixture::x(3000), keyY), false) == "Copy keyframe");
+    CHECK(copy.isEmpty());
+    CHECK(menuAt(QPoint(Fixture::x(3000), keyY), true) == "Copy keyframe");
+    CHECK(copy.count() == 1 && copy.last().at(0).toInt() == 1 &&
+          copy.last().at(1).toLongLong() == 3000);
+    CHECK(sel.count() == 2 && sel.last().at(0).toInt() == 1);
+    // Clip b's key asks for b's key.
+    CHECK(menuAt(QPoint(Fixture::x(15000), keyY), true) == "Copy keyframe");
+    CHECK(copy.count() == 2 && copy.last().at(0).toInt() == 2 &&
+          copy.last().at(1).toLongLong() == 5000);
+    // Off the diamonds, the clip's own menu has no Copy keyframe.
+    CHECK(menuAt(QPoint(Fixture::x(4000), keyY), false).isEmpty());
+    CHECK(copy.count() == 2);
+}
+
 void dragWith(QWidget *w, QPoint from, QPoint to, Qt::KeyboardModifiers mods)
 {
     QTest::mousePress(w, Qt::LeftButton, mods, from);
@@ -1455,6 +1508,7 @@ int main(int argc, char **argv)
     testOnlyOntoTracksThatHoldIt();
     testTrims();
     testKeyDiamondClick();
+    testReframeKeyCopyMenu();
     testKeyLane();
     testOverlayKeyLane();
     testMarkDotClick();
