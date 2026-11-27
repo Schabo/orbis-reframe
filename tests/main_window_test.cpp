@@ -499,10 +499,34 @@ void testOpenTakeFile(const Ctx &c)
     CHECK(c.project->recheckMissingMedia().gone == QStringList{lead});
 }
 
-// The window's size from the last close comes back at the next start.
-void testWindowGeometry()
+// The window keeps its size between starts. The first start uses 1280x760.
+// A close writes the size. A resize alone and a cancelled close write nothing.
+void testWindowGeometry(const Ctx &c)
 {
     std::printf("  window size\n");
+    const auto storedGeometry = [] {
+        QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
+        settings.sync();
+        return settings.value(QStringLiteral("mainWindow/geometry")).toByteArray();
+    };
+    const auto clearGeometry = [] {
+        QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
+        settings.remove(QStringLiteral("mainWindow/geometry"));
+        settings.sync();
+    };
+
+    // The first start has no saved size. The offscreen platform does not clamp
+    // resize() before the window is shown.
+    clearGeometry();
+    CHECK(storedGeometry().isEmpty());
+    {
+        MainWindow w(nullptr, standIns());
+        CHECK(w.size() == QSize(1280, 760));
+        CHECK(storedGeometry().isEmpty());
+    }
+    CHECK(storedGeometry().isEmpty());
+
+    // A close writes the size, and the next start restores it.
     QSize size;
     {
         MainWindow w(nullptr, standIns());
@@ -510,10 +534,45 @@ void testWindowGeometry()
         size = w.size();
         CHECK(w.close());
     }
-    CHECK(!QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
-               .value(QStringLiteral("mainWindow/geometry"))
-               .toByteArray()
-               .isEmpty());
+    const QByteArray saved = storedGeometry();
+    CHECK(!saved.isEmpty());
+    {
+        MainWindow w(nullptr, standIns());
+        CHECK(w.size() == size);
+    }
+
+    // A resize alone writes nothing. The destructor sends no close event.
+    {
+        MainWindow w(nullptr, standIns());
+        CHECK(w.size() == size);
+        w.resize(700, 600); // inside the offscreen platform's 800x800 screen
+        QApplication::processEvents();
+        CHECK(storedGeometry() == saved);
+    }
+    CHECK(storedGeometry() == saved);
+
+    // Cancel on close keeps the saved size and the unsaved change.
+    {
+        MainWindow w(nullptr, standIns());
+        CHECK(w.size() == size);
+        w.openProject(c.orp);
+        auto *project = w.findChild<Project *>();
+        QAction *addAudio = find<QAction>(&w, "addAudioTrackAction");
+        CHECK(project && addAudio);
+        if (addAudio)
+            addAudio->trigger();
+        CHECK(project && project->modified());
+        w.show();
+        w.resize(760, 620); // a different size, which a close would save
+        QApplication::processEvents();
+        const QByteArray beforeCancel = storedGeometry();
+        answerMessageBox(QStringLiteral("Cancel"));
+        CHECK(!w.close());
+        CHECK(w.isVisible());
+        CHECK(storedGeometry() == beforeCancel);
+    }
+    // The destructor sends no close event either.
+    CHECK(storedGeometry() == saved);
     {
         MainWindow w(nullptr, standIns());
         CHECK(w.size() == size);
@@ -3665,7 +3724,7 @@ int main(int argc, char **argv)
             testOpenTakeFile(c); // replaces the project
         }
     }
-    testWindowGeometry();
+    testWindowGeometry(c);
 
     if (g_failures == 0)
         std::printf("main_window_test: all checks passed\n");
