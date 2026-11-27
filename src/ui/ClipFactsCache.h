@@ -19,6 +19,9 @@ struct ClipFileFacts {
     stitch::LensGuardProfiles lensGuards = stitch::LensGuardProfiles::all();
     // Source ms from the file's first frame, in time order.
     QList<qint64> highlightMs;
+    // The camera stitched it already (stitch::ClipProbe::camera_stitched):
+    // the Stitching panel has nothing to set.
+    bool cameraStitched = false;
 
     static ClipFileFacts fromProbe(const stitch::ClipProbe &probe);
 };

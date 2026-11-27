@@ -10,6 +10,7 @@ ClipFileFacts ClipFileFacts::fromProbe(const stitch::ClipProbe &probe)
     f.lensGuards = probe.lens_guards;
     for (const int64_t ms : probe.highlight_ms)
         f.highlightMs.push_back(ms);
+    f.cameraStitched = probe.camera_stitched;
     return f;
 }
 

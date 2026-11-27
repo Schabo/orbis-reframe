@@ -35,6 +35,7 @@ bool ProbeClip(const std::string& clip_path, ClipProbe& out, std::string& err)
                        clip->guardFitted};
     out.highlight_ms = clip->highlightMs;
     out.untested_model = clip->untestedModel ? clip->model : std::string();
+    out.camera_stitched = clip->projection == camera::Projection::EquiAngularCube;
     return true;
 }
 

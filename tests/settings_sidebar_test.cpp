@@ -396,6 +396,29 @@ void testStitchingPanel(SettingsSidebar &bar)
     CHECK(calButton->isEnabled());
     stitching->setState(G::Premium, M::DepthSeam);
     CHECK(guard->isEnabled() && method->isEnabled() && apply->isEnabled());
+
+    // A clip the camera stitched: everything greyed out, Calibrate lenses
+    // too, with the line saying why; the next clip gets them all back.
+    auto *byCamera = stitching->findChild<QLabel *>(QStringLiteral("stitchByCamera"));
+    CHECK(byCamera && byCamera->isHidden());
+    method->setCurrentIndex(int(M::New));
+    stitching->setCalibrations({"From the camera file", "Calibrated 2026-11-02"}, {}, 0);
+    stitching->setCameraStitched(true);
+    CHECK(byCamera && !byCamera->isHidden());
+    CHECK(!guard->isEnabled() && !method->isEnabled() && !apply->isEnabled());
+    CHECK(!blend->isEnabled() && (!flow || !flow->isEnabled()) && !cal->isEnabled());
+    CHECK(!calButton->isEnabled());
+    stitching->setCalibrateAvailable(true); // the build can: still not for this clip
+    CHECK(!calButton->isEnabled());
+    stitching->setState(G::Premium, M::New);
+    stitching->setCameraStitched(false);
+    CHECK(byCamera && byCamera->isHidden());
+    CHECK(guard->isEnabled() && method->isEnabled() && apply->isEnabled() && blend->isEnabled());
+    CHECK(calButton->isEnabled() && calButton->toolTip() != QString());
+    stitching->setCalibrateAvailable(false, "no OpenCV");
+    stitching->setCameraStitched(true);
+    stitching->setCameraStitched(false);
+    CHECK(!calButton->isEnabled() && calButton->toolTip() == "no OpenCV");
 }
 
 void testProjectSettingsDialog()

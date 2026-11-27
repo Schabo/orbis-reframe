@@ -25,6 +25,10 @@ file (after a split, say) shares them, since one recording is filmed with
 one set of lens guards. Clips from different files can differ, so a
 project can mix footage filmed with and without guards.
 
+A GoPro MAX stitches its clips itself, in the camera. For one of its clips
+the section is greyed out, **Calibrate lenses** too, with a line saying
+there's nothing to set.
+
 ## Lens guards
 
 Set **Lens guards** to what was fitted over the lenses when you filmed:

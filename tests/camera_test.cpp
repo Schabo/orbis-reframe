@@ -1535,6 +1535,10 @@ void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::p
     camera::MediaInfo info;
     CHECK(camera::ProbeMediaInfo(clip360.string(), info, err) && info.cameraClip &&
           info.proxyPath == clip->proxyPath);
+    // Stitched by the camera: the Stitching panel greys out for it.
+    stitch::ClipProbe probe;
+    CHECK(stitch::ProbeClip(clip360.string(), probe, err) && probe.camera_stitched &&
+          probe.untested_model.empty());
 
     const auto imu = camera::ReadClipImu(clip360.string());
     CHECK(imu);
