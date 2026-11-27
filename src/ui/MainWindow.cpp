@@ -987,6 +987,31 @@ void MainWindow::connectReframe()
         if (m_clipId)
             m_timeline->setClipReframeEase(m_clipId, m_lastPositionMs, e, playingPane());
     });
+    // Copy / paste one keyframe: the panel acts at the playhead, a diamond's
+    // menu on the clicked key. The clipboard is session state, like a grade's.
+    const auto copyKey = [this](int clipId, qint64 sourceMs) {
+        const ClipItem *c = m_timeline->clipById(clipId);
+        if (!c || c->flat)
+            return;
+        const ReframeTrack &track = c->paneTrack(paneOf(*c));
+        const int i =
+            keytrack::indexNear(track.keys(), sourceMs, ClipItem::kReframeDeleteSnapMs);
+        if (i < 0)
+            return;
+        m_copiedReframeKey = track.keys()[i];
+        syncReframePanel(); // Paste keyframe is live now
+    };
+    const auto pasteKey = [this](int clipId, qint64 sourceMs) {
+        const ClipItem *c = m_timeline->clipById(clipId);
+        if (!m_copiedReframeKey || !c || c->flat)
+            return;
+        m_timeline->pasteClipReframeKey(clipId, sourceMs, *m_copiedReframeKey, paneOf(*c));
+    };
+    connect(m_reframePanel, &ReframePanel::copyKeyframeRequested, this,
+            [this, copyKey] { copyKey(m_clipId, m_lastPositionMs); });
+    connect(m_reframePanel, &ReframePanel::pasteKeyframeRequested, this,
+            [this, pasteKey] { pasteKey(m_clipId, m_lastPositionMs); });
+    connect(m_timelineWidget, &TimelineWidget::reframeKeyCopyRequested, this, copyKey);
     // Track subject: the panel arms a box select in the viewport; a drawn box
     // starts tracking from the playhead.
     m_reframePanel->setTrackUnavailable(syscheck::trackUnavailableReason());
@@ -1735,6 +1760,9 @@ void MainWindow::syncReframePanel()
     const int seg =
         t ? keytrack::segmentAt(t->keys(), m_lastPositionMs, ClipItem::kReframeDeleteSnapMs) : -1;
     m_reframePanel->setEase(seg >= 0, seg >= 0 ? t->keys()[seg].ease : keytrack::Ease::Linear);
+    const bool atKey =
+        t && keytrack::indexNear(t->keys(), m_lastPositionMs, ClipItem::kReframeDeleteSnapMs) >= 0;
+    m_reframePanel->setKeyframeActions(atKey, m_copiedReframeKey.has_value());
 }
 
 void MainWindow::bindActiveClipAt(qint64 timelineMs)

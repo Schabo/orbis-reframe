@@ -858,6 +858,21 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         return;
     }
 
+    // A reframe keyframe's diamond: copy it. An overlay clip's look keys
+    // have no reframe view to copy, so their clip menu follows.
+    if (const KeyHit k = keyAt(e->pos()); k.index >= 0 && k.row >= 0) {
+        const Clip &clip = m_rows[k.row].clip;
+        const int clipId = clip.id;
+        const qint64 sourceMs = clip.keySourceMs[k.index];
+        // Copies: selecting the clip may hand the widget new clips.
+        emit clipSelected(clipId);
+        QAction *copy = menu.addAction(tr("Copy keyframe"));
+        copy->setObjectName(QStringLiteral("keyframeCopyAction"));
+        if (menu.exec(e->globalPos()) == copy)
+            emit reframeKeyCopyRequested(clipId, sourceMs);
+        return;
+    }
+
     if (h.kind == Hit::MainClip) {
         emit clipSelected(m_rows[h.row].clip.id);
         const Row &r = m_rows[h.row];

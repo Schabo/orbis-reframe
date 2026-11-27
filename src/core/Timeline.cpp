@@ -581,6 +581,15 @@ void Timeline::upsertClipReframeKey(int clipId, qint64 sourceMs, ReframePose pos
         emit clipReframeChanged(c->id);
 }
 
+void Timeline::pasteClipReframeKey(int clipId, qint64 sourceMs, const ReframeKey &key, int pane)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (!c || c->flat)
+        return;
+    c->paneTrack(pane).setKey(sourceMs, key.pose, key.ease, ClipItem::kReframeDeleteSnapMs);
+    emit clipReframeChanged(c->id);
+}
+
 void Timeline::removeClipReframeKeyNear(int clipId, qint64 sourceMs, int pane)
 {
     ClipItem *c = mutableClipById(clipId);

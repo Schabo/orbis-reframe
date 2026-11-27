@@ -913,6 +913,48 @@ void testKeyLaneDelete(const Ctx &c)
     settle();
 }
 
+// Copy keyframe / Paste keyframe in the Reframe section: the key at the
+// playhead goes to the clipboard, and the copy lands at a later playhead with
+// its view and easing.
+void testReframeKeyCopyPaste(const Ctx &c)
+{
+    if (c.timeline->count() < 1)
+        return;
+    auto *sidebar = c.w->findChild<SettingsSidebar *>();
+    if (sidebar)
+        sidebar->setCurrentIndex(SettingsSidebar::VideoTab);
+    auto *copy = find<QPushButton>(c.w, "reframeKeyCopyButton");
+    auto *paste = find<QPushButton>(c.w, "reframeKeyPasteButton");
+    if (!copy || !paste)
+        return;
+    const int a = c.timeline->clipAt(0).id;
+    settle();
+    CHECK(seekTo(c, 1000));
+    settle();
+    const qint64 at = c.timeline->clipAt(0).sourceAtLocalMs(1000);
+    c.timeline->upsertClipReframeKey(a, at, {0.5f, 0.0f, 0.0f, 1.2});
+    c.timeline->upsertClipReframeKey(a, c.timeline->clipAt(0).sourceAtLocalMs(3000), {});
+    settle();
+    c.timeline->setClipReframeEase(a, at, keytrack::Ease::Out);
+    CHECK(copy->isEnabled());
+    copy->click();
+    CHECK(paste->isEnabled());
+    CHECK(seekTo(c, 2000));
+    settle();
+    CHECK(!copy->isEnabled()); // no key there yet
+    paste->click();
+    const ClipItem *clip = c.timeline->clipById(a);
+    const qint64 pasted = clip->sourceAtLocalMs(2000);
+    const int i = clip->reframe.keyTimes().indexOf(pasted);
+    CHECK(i >= 0);
+    if (i >= 0)
+        CHECK(std::abs(clip->reframe.keys()[i].pose.yaw - 0.5f) < 1e-4f &&
+              std::abs(clip->reframe.keys()[i].pose.fov - 1.2) < 1e-4 &&
+              clip->reframe.keys()[i].ease == keytrack::Ease::Out);
+    c.timeline->clearClipReframe(a);
+    settle();
+}
+
 // M sets a highlight mark at the playhead, on the clip under it, Shift+M
 // deletes it (the Edit menu's Add mark / Delete mark), Ctrl+Up / Down reach
 // it; each is one undo step.
@@ -3813,6 +3855,7 @@ int main(int argc, char **argv)
             testKeyOnTrimOut(c);
             testNumberFieldLetters(c);
             testKeyLaneDelete(c);
+            testReframeKeyCopyPaste(c);
             testStepOntoCut(c);
             testMarkKeys(c);
             testVideoEdits(c);

@@ -232,6 +232,24 @@ ReframePanel::ReframePanel(QWidget *parent)
     connect(m_ease, &QComboBox::activated, this,
             [this] { emit easeEdited(easecombo::ease(m_ease)); });
 
+    // Copy / paste one keyframe -- the view and the easing -- at the playhead.
+    m_keyRow = new QWidget(this);
+    auto *keyLayout = new QHBoxLayout(m_keyRow);
+    keyLayout->setContentsMargins(0, 0, 0, 0);
+    m_copyKey = new QPushButton(tr("Copy keyframe"), m_keyRow);
+    m_copyKey->setObjectName(QStringLiteral("reframeKeyCopyButton"));
+    m_copyKey->setToolTip(tr("Copy the keyframe at the playhead: its view and easing. "
+                             "Paste it on this clip or another one."));
+    m_pasteKey = new QPushButton(tr("Paste keyframe"), m_keyRow);
+    m_pasteKey->setObjectName(QStringLiteral("reframeKeyPasteButton"));
+    m_pasteKey->setToolTip(tr("Write the copied keyframe at the playhead: its view and "
+                              "easing. A keyframe within 0.15 s is replaced."));
+    keyLayout->addWidget(m_copyKey);
+    keyLayout->addWidget(m_pasteKey);
+    form()->addRow(tr("Keyframe"), m_keyRow);
+    connect(m_copyKey, &QPushButton::clicked, this, &ReframePanel::copyKeyframeRequested);
+    connect(m_pasteKey, &QPushButton::clicked, this, &ReframePanel::pasteKeyframeRequested);
+
     m_track = new QPushButton(tr("Track subject…"), this);
     m_track->setObjectName(QStringLiteral("trackSubjectButton"));
     m_track->setCheckable(true);
@@ -277,6 +295,7 @@ ReframePanel::ReframePanel(QWidget *parent)
     setClip(false);
     setPose(ReframePose{});
     setPaneLayout(pane::Layout::Single);
+    setKeyframeActions(false, false);
 
     connect(m_yaw, &QDoubleSpinBox::valueChanged, this, [this](double v) {
         edited([v](ReframePose &p) { p.yaw = static_cast<float>(v * kDegToRad); });
@@ -444,7 +463,7 @@ void ReframePanel::setClip(bool flat, bool fill)
     for (QWidget *w :
          std::initializer_list<QWidget *>{m_presetRow, m_yaw, m_pitch, m_roll, m_fov,
                                           m_distortionRow, m_naturalRow, m_fisheyeRow,
-                                          m_ease, m_track})
+                                          m_ease, m_keyRow, m_track})
         form()->setRowVisible(w, !flat);
     form()->setRowVisible(m_trackUnavailable, !flat && !m_trackUnavailableReason.isEmpty());
     form()->setRowVisible(m_trackStatus, !flat && m_trackRunning);
@@ -456,6 +475,7 @@ void ReframePanel::setClip(bool flat, bool fill)
     setHint(flat ? tr("A flat video is shown as it is, not reframed.")
                  : tr("With Arm reframe authoring on in the edit toolbar, each value you enter "
                       "sets a keyframe at the playhead."));
+    updateKeyframeActions();
 }
 
 void ReframePanel::setNoClip()
@@ -464,6 +484,7 @@ void ReframePanel::setNoClip()
     setPaneLayout(pane::Layout::Single);
     m_hasClip = false;
     updateBodyEnabled();
+    updateKeyframeActions();
 }
 
 void ReframePanel::updateBodyEnabled()
@@ -515,6 +536,21 @@ void ReframePanel::setTrackRunning(bool running)
         w->setEnabled(!running);
     m_distortion->setEnabled(!running && !m_pose.distortionIsAuto());
     m_ease->setEnabled(m_easeAvailable && !running);
+    updateKeyframeActions();
+}
+
+void ReframePanel::setKeyframeActions(bool atKeyframe, bool canPaste)
+{
+    m_atKeyframe = atKeyframe;
+    m_canPasteKey = canPaste;
+    updateKeyframeActions();
+}
+
+void ReframePanel::updateKeyframeActions()
+{
+    const bool live = m_hasClip && !m_flat && !m_trackRunning;
+    m_copyKey->setEnabled(live && m_atKeyframe);
+    m_pasteKey->setEnabled(live && m_canPasteKey);
 }
 
 void ReframePanel::setTrackStatus(const QString &status)

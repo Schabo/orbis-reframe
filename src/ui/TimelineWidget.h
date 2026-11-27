@@ -100,7 +100,9 @@ class QTimer;
 //   on the lane between keys clears it); the selection stays in one clip
 //   and is view state, dropped when that clip's keys change.
 //   deleteSelectedKeys() or the clip menu's "Delete keyframes" ->
-//   keysDeleteRequested / trackClipKeysDeleteRequested. A main clip without
+//   keysDeleteRequested / trackClipKeysDeleteRequested. A right click on a
+//   diamond copies that keyframe (reframeKeyCopyRequested). A main clip
+//   without
 //   any keys is labelled with a hollow diamond (and says why in its
 //   tooltip) -- it exports a static forward view. The lane stops short of
 //   the clip's ends, which stay trim handles.
@@ -301,6 +303,8 @@ signals:
     void keysDeleteRequested(int clipId, const QVector<qint64> &sourceMs);
     // The same for an overlay clip's look keys.
     void trackClipKeysDeleteRequested(int clipId, const QVector<qint64> &sourceMs);
+    // Copy the reframe keyframe at `sourceMs` (its diamond's menu).
+    void reframeKeyCopyRequested(int clipId, qint64 sourceMs);
     void scrubRequested(qint64 timelineMs); // while dragging: fast preview
     void clipTrimInRequested(int clipId, qint64 newTrimInMs);
     void clipTrimOutRequested(int clipId, qint64 newTrimOutMs);

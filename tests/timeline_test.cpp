@@ -412,6 +412,25 @@ void testTimelineStructure()
     tl.replaceClipReframeSpan(999, 0, 2000, {}); // unknown id: no signal
     CHECK(reframeTouched == 2);
 
+    // a copied key lands with its pose and easing: one edit, one signal
+    ReframeKey copied;
+    copied.pose.yaw = 0.4f;
+    copied.pose.fov = 1.3;
+    copied.ease = keytrack::Ease::Out;
+    tl.pasteClipReframeKey(a, 2500, copied);
+    CHECK(reframeTouched == 3);
+    {
+        const ReframeTrack &t = tl.clipById(a)->reframe;
+        const int i = t.keyTimes().indexOf(2500);
+        CHECK(i >= 0);
+        if (i >= 0)
+            CHECK(t.keys()[i].ease == keytrack::Ease::Out &&
+                  std::abs(t.keys()[i].pose.yaw - 0.4f) < 1e-6f &&
+                  std::abs(t.keys()[i].pose.fov - 1.3) < 1e-6);
+    }
+    tl.pasteClipReframeKey(999, 2500, copied); // unknown id: no signal
+    CHECK(reframeTouched == 3);
+
     // colour: all four fields set together, one signal, unknown-id safety
     int colorTouched = 0;
     ColorGrade lastGrade;

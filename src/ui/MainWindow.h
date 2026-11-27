@@ -760,6 +760,9 @@ private:
     // The grade from Copy grade (Colour panel / a clip's right-click menu);
     // kept for the session, not in the project.
     std::optional<ColorGrade> m_copiedGrade;
+    // The reframe keyframe from Copy keyframe (a diamond's menu or the Reframe
+    // section); kept for the session, not in the project.
+    std::optional<ReframeKey> m_copiedReframeKey;
     QString m_lastLutDir; // where Load LUT... last found one
     std::optional<orbiscore::StabConfig> m_copiedStab; // Copy / Paste stabilization
     QString m_copiedStabSource;                        // ... and the file it was copied from

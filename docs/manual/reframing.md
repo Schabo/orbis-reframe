@@ -304,6 +304,23 @@ following the keyframes.
 
 **Edit ▸ Undo** (`Ctrl+Z`) undoes keyframe changes like any other edit.
 
+### Copying keyframes
+
+You can copy one keyframe and paste it at another moment, on the same clip or
+on another clip. The copy holds the view and the easing.
+
+1. Copy the keyframe: right-click its diamond on the clip and choose **Copy
+   keyframe**, or move the playhead onto it and click **Copy keyframe** in the
+   **Reframe** section.
+2. Move the playhead to where the view should go. The clip under the playhead
+   takes the keyframe.
+3. Click **Paste keyframe** in the **Reframe** section. orbis-reframe writes
+   the copied view and easing at the playhead. A keyframe within 0.15 seconds
+   is replaced.
+
+The Reframe section keeps the copy for the session, also across projects. It
+is not saved in the project file.
+
 ### Easing
 
 **Easing** in the **Reframe** section sets how the camera moves from one
