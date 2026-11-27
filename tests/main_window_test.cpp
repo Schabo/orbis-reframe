@@ -1338,6 +1338,189 @@ void testReframeKeyCopyPaste(const Ctx &c)
     settle();
 }
 
+// A keyframe copied on clip 1 pastes onto clip 2 at the playhead, with the
+// copy's view and easing; clip 1 keeps its key.
+void testReframeKeyPasteOnOtherClip(const Ctx &c)
+{
+    if (c.timeline->count() < 2)
+        return;
+    auto *sidebar = c.w->findChild<SettingsSidebar *>();
+    if (sidebar)
+        sidebar->setCurrentIndex(SettingsSidebar::VideoTab);
+    auto *copy = find<QPushButton>(c.w, "reframeKeyCopyButton");
+    auto *paste = find<QPushButton>(c.w, "reframeKeyPasteButton");
+    if (!copy || !paste)
+        return;
+    const int a = c.timeline->clipAt(0).id;
+    settle();
+    CHECK(seekTo(c, 1000));
+    settle();
+    const qint64 atA = c.timeline->clipAt(0).sourceAtLocalMs(1000);
+    c.timeline->upsertClipReframeKey(a, atA, {0.7f, -0.1f, 0.0f, 1.05});
+    c.timeline->upsertClipReframeKey(a, c.timeline->clipAt(0).sourceAtLocalMs(3000), {});
+    settle();
+    c.timeline->setClipReframeEase(a, atA, keytrack::Ease::Out);
+    CHECK(copy->isEnabled());
+    copy->click();
+    CHECK(paste->isEnabled());
+
+    const int b = c.timeline->clipAt(1).id;
+    emit c.timelineWidget->clipSelected(b);
+    CHECK(seekTo(c, kClipMs + 1500));
+    settle();
+    paste->click();
+    const ClipItem *clip = c.timeline->clipById(b);
+    CHECK(clip && clip->reframe.count() == 1);
+    if (clip && clip->reframe.count() == 1) {
+        const qint64 atB = clip->sourceAtLocalMs(1500);
+        CHECK(clip->reframe.keyTimes() == QList<qint64>{atB});
+        const int i = clip->reframe.keyTimes().indexOf(atB);
+        if (i >= 0)
+            CHECK(std::abs(clip->reframe.keys()[i].pose.yaw - 0.7f) < 1e-4f &&
+                  std::abs(clip->reframe.keys()[i].pose.pitch + 0.1f) < 1e-4f &&
+                  std::abs(clip->reframe.keys()[i].pose.fov - 1.05) < 1e-4 &&
+                  clip->reframe.keys()[i].ease == keytrack::Ease::Out);
+    }
+    CHECK(c.timeline->clipAt(0).reframe.count() == 2);
+    c.timeline->clearClipReframe(c.timeline->clipAt(0).id);
+    c.timeline->clearClipReframe(c.timeline->clipAt(1).id);
+    key(c, Qt::Key_Escape);
+    settle();
+}
+
+// Paste within 0.15 s of a key replaces it and keeps its time; a paste
+// further away adds a key. Both write the copy's view and easing.
+void testReframeKeyPasteReplacesNearKey(const Ctx &c)
+{
+    if (c.timeline->count() < 2)
+        return;
+    auto *sidebar = c.w->findChild<SettingsSidebar *>();
+    if (sidebar)
+        sidebar->setCurrentIndex(SettingsSidebar::VideoTab);
+    auto *copy = find<QPushButton>(c.w, "reframeKeyCopyButton");
+    auto *paste = find<QPushButton>(c.w, "reframeKeyPasteButton");
+    if (!copy || !paste)
+        return;
+    const int a = c.timeline->clipAt(0).id;
+    settle();
+    CHECK(seekTo(c, 1000));
+    settle();
+    const qint64 atA = c.timeline->clipAt(0).sourceAtLocalMs(1000);
+    c.timeline->upsertClipReframeKey(a, atA, {0.3f, 0.1f, 0.0f, 1.1});
+    c.timeline->upsertClipReframeKey(a, c.timeline->clipAt(0).sourceAtLocalMs(3000), {});
+    settle();
+    c.timeline->setClipReframeEase(a, atA, keytrack::Ease::Out);
+    CHECK(copy->isEnabled());
+    copy->click();
+
+    const int b = c.timeline->clipAt(1).id;
+    const qint64 t = 1000;
+    c.timeline->upsertClipReframeKey(b, t, {-0.4f, 0.0f, 0.0f, 0.9});
+    c.timeline->upsertClipReframeKey(b, 3000, {});
+    c.timeline->setClipReframeEase(b, t, keytrack::Ease::In);
+    settle();
+    emit c.timelineWidget->clipSelected(b);
+    CHECK(seekTo(c, kClipMs + t + 100));
+    settle();
+    CHECK(c.timeline->clipAt(1).reframe.count() == 2);
+    paste->click();
+    const ClipItem *clip = &c.timeline->clipAt(1);
+    CHECK(clip->reframe.count() == 2);
+    CHECK(clip->reframe.keyTimes() == (QList<qint64>{t, 3000}));
+    int i = clip->reframe.keyTimes().indexOf(t);
+    if (i >= 0)
+        CHECK(std::abs(clip->reframe.keys()[i].pose.yaw - 0.3f) < 1e-4f &&
+              std::abs(clip->reframe.keys()[i].pose.pitch - 0.1f) < 1e-4f &&
+              std::abs(clip->reframe.keys()[i].pose.fov - 1.1) < 1e-4 &&
+              clip->reframe.keys()[i].ease == keytrack::Ease::Out);
+
+    CHECK(seekTo(c, kClipMs + t + 200));
+    settle();
+    paste->click();
+    clip = &c.timeline->clipAt(1);
+    CHECK(clip->reframe.count() == 3);
+    CHECK(clip->reframe.keyTimes() == (QList<qint64>{t, t + 200, 3000}));
+    i = clip->reframe.keyTimes().indexOf(t + 200);
+    if (i >= 0)
+        CHECK(std::abs(clip->reframe.keys()[i].pose.yaw - 0.3f) < 1e-4f &&
+              std::abs(clip->reframe.keys()[i].pose.pitch - 0.1f) < 1e-4f &&
+              std::abs(clip->reframe.keys()[i].pose.fov - 1.1) < 1e-4 &&
+              clip->reframe.keys()[i].ease == keytrack::Ease::Out);
+    c.timeline->clearClipReframe(c.timeline->clipAt(0).id);
+    c.timeline->clearClipReframe(c.timeline->clipAt(1).id);
+    key(c, Qt::Key_Escape);
+    settle();
+}
+
+// Paste keyframe is one undo step: undo removes the pasted key and keeps the
+// clip's other key, and redo brings the pasted key back. Undo rebuilds the
+// timeline, so the clip is looked up by its place.
+void testReframeKeyPasteUndo(const Ctx &c)
+{
+    QAction *undo = action(c, "undoAction");
+    QAction *redo = action(c, "redoAction");
+    if (!undo || !redo || c.timeline->count() < 2)
+        return;
+    auto *sidebar = c.w->findChild<SettingsSidebar *>();
+    if (sidebar)
+        sidebar->setCurrentIndex(SettingsSidebar::VideoTab);
+    auto *copy = find<QPushButton>(c.w, "reframeKeyCopyButton");
+    auto *paste = find<QPushButton>(c.w, "reframeKeyPasteButton");
+    if (!copy || !paste)
+        return;
+    const int a = c.timeline->clipAt(0).id;
+    settle();
+    CHECK(seekTo(c, 1000));
+    settle();
+    const qint64 atA = c.timeline->clipAt(0).sourceAtLocalMs(1000);
+    c.timeline->upsertClipReframeKey(a, atA, {0.2f, -0.2f, 0.0f, 1.15});
+    c.timeline->upsertClipReframeKey(a, c.timeline->clipAt(0).sourceAtLocalMs(3000), {});
+    settle();
+    c.timeline->setClipReframeEase(a, atA, keytrack::Ease::In);
+    CHECK(copy->isEnabled());
+    copy->click();
+
+    const int b = c.timeline->clipAt(1).id;
+    c.timeline->upsertClipReframeKey(b, 1000, {-0.2f, 0.0f, 0.0f, 0.8});
+    c.timeline->upsertClipReframeKey(b, 3000, {});
+    c.timeline->setClipReframeEase(b, 1000, keytrack::Ease::In);
+    settle(); // clip 2's own keys are a step of their own
+    emit c.timelineWidget->clipSelected(b);
+    CHECK(seekTo(c, kClipMs + 2000));
+    settle();
+    CHECK(c.timeline->clipAt(1).reframe.count() == 2);
+    CHECK(undo->isEnabled());
+    paste->click();
+    CHECK(c.timeline->clipAt(1).reframe.keyTimes() == (QList<qint64>{1000, 2000, 3000}));
+
+    undo->trigger();
+    CHECK(c.timeline->count() == 2);
+    CHECK(c.timeline->clipAt(1).sourcePath == c.clipB);
+    CHECK(c.timeline->clipAt(1).reframe.keyTimes() == (QList<qint64>{1000, 3000}));
+    const ClipItem *clip = &c.timeline->clipAt(1);
+    int i = clip->reframe.keyTimes().indexOf(1000);
+    if (i >= 0)
+        CHECK(std::abs(clip->reframe.keys()[i].pose.yaw + 0.2f) < 1e-4f &&
+              clip->reframe.keys()[i].ease == keytrack::Ease::In);
+    CHECK(undo->isEnabled()); // the clip's own keys are still one step back
+    CHECK(redo->isEnabled());
+
+    redo->trigger();
+    CHECK(c.timeline->count() == 2);
+    clip = &c.timeline->clipAt(1);
+    CHECK(clip->reframe.keyTimes() == (QList<qint64>{1000, 2000, 3000}));
+    i = clip->reframe.keyTimes().indexOf(2000);
+    if (i >= 0)
+        CHECK(std::abs(clip->reframe.keys()[i].pose.yaw - 0.2f) < 1e-4f &&
+              std::abs(clip->reframe.keys()[i].pose.fov - 1.15) < 1e-4 &&
+              clip->reframe.keys()[i].ease == keytrack::Ease::In);
+    CHECK(c.timeline->clipAt(0).reframe.count() == 2); // clip 1 kept its keys
+    c.timeline->clearClipReframe(c.timeline->clipAt(0).id);
+    c.timeline->clearClipReframe(c.timeline->clipAt(1).id);
+    key(c, Qt::Key_Escape);
+    settle();
+}
+
 // M sets a highlight mark at the playhead, on the clip under it, Shift+M
 // deletes it (the Edit menu's Add mark / Delete mark), Ctrl+Up / Down reach
 // it; each is one undo step.
@@ -4239,6 +4422,9 @@ int main(int argc, char **argv)
             testNumberFieldLetters(c);
             testKeyLaneDelete(c);
             testReframeKeyCopyPaste(c);
+            testReframeKeyPasteOnOtherClip(c);
+            testReframeKeyPasteReplacesNearKey(c);
+            testReframeKeyPasteUndo(c);
             testStepOntoCut(c);
             testMarkKeys(c);
             testVideoEdits(c);
