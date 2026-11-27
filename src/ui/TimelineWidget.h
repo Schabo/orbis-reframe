@@ -101,11 +101,13 @@ class QTimer;
 //   and is view state, dropped when that clip's keys change.
 //   deleteSelectedKeys() or the clip menu's "Delete keyframes" ->
 //   keysDeleteRequested / trackClipKeysDeleteRequested. The clip menu's
-//   "Copy keyframes" -> keysCopyRequested; the selection stays. A right
-//   click on a diamond copies that keyframe (reframeKeyCopyRequested). A
-//   main clip without any keys is labelled with a hollow diamond (and says
-//   why in its tooltip) -- it exports a static forward view. The lane stops
-//   short of the clip's ends, which stay trim handles.
+//   "Copy keyframes" -> keysCopyRequested; the selection stays. Its
+//   "Paste keyframes" -> keysPasteRequested when a block was copied and the
+//   playhead is in the clip. A right click on a diamond copies that keyframe
+//   (reframeKeyCopyRequested). A main clip without any keys is labelled with
+//   a hollow diamond (and says why in its tooltip) -- it exports a static
+//   forward view. The lane stops short of the clip's ends, which stay trim
+//   handles.
 //   Zoom: Ctrl+wheel (around the pointer) or zoomIn / zoomOut / zoomToFit;
 //   the wheel or the scrollbar under the tracks pans.
 //   Height: whatever the window gives it; rows that don't fit scroll up and
@@ -270,6 +272,8 @@ public:
     void setSelectedTrackClip(int clipId); // -1 = none; does not emit
     void setCanPasteGrade(bool canPaste);  // a colour grade has been copied
     void setCanPasteStabilization(bool canPaste); // a stabilization setting has been copied
+    // A reframe keyframe block has been copied: the clip menu can paste it.
+    void setReframeKeysCopied(int count);
     // A video track's own sound tracks folded away under it (view only;
     // doesn't emit). `videoTrackId` 0 = the main track; else an overlay
     // track's id.
@@ -303,6 +307,9 @@ signals:
     void keysDeleteRequested(int clipId, const QVector<qint64> &sourceMs);
     // Copy the reframe keys at these source times (the selection in the lane).
     void keysCopyRequested(int clipId, const QVector<qint64> &sourceMs);
+    // Write the copied reframe keyframes at sourceMs on clip `clipId` (the clip
+    // menu's Paste keyframes).
+    void keysPasteRequested(int clipId, qint64 sourceMs);
     // The same for an overlay clip's look keys.
     void trackClipKeysDeleteRequested(int clipId, const QVector<qint64> &sourceMs);
     // Copy the reframe keyframe at `sourceMs` (its diamond's menu).
@@ -527,6 +534,7 @@ private:
     int m_activeClipId = -1;
     bool m_canPasteGrade = false;
     bool m_canPasteStab = false;
+    int m_copiedKeys = 0; // in the reframe keyframe block (for Paste keyframes)
     int m_selectedAudioId = -1;
     KeyHit m_hoverKey; // the diamond under the pointer (drawn highlighted)
     // Keys selected in a clip's lane, by source ms; `spans` (source ms) the

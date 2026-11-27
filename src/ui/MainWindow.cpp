@@ -1042,6 +1042,7 @@ void MainWindow::connectReframe()
             [this, pasteKey] { pasteKey(m_clipId, m_lastPositionMs); });
     connect(m_timelineWidget, &TimelineWidget::reframeKeyCopyRequested, this, copyKey);
     connect(m_timelineWidget, &TimelineWidget::keysCopyRequested, this, copyKeys);
+    connect(m_timelineWidget, &TimelineWidget::keysPasteRequested, this, pasteKey);
     // Track subject: the panel arms a box select in the viewport; a drawn box
     // starts tracking from the playhead.
     m_reframePanel->setTrackUnavailable(syscheck::trackUnavailableReason());
@@ -1793,6 +1794,7 @@ void MainWindow::syncReframePanel()
     const bool atKey =
         t && keytrack::indexNear(t->keys(), m_lastPositionMs, ClipItem::kReframeDeleteSnapMs) >= 0;
     m_reframePanel->setKeyframeActions(atKey, !m_copiedReframeKeys.isEmpty());
+    m_timelineWidget->setReframeKeysCopied(m_copiedReframeKeys.size());
 }
 
 void MainWindow::bindActiveClipAt(qint64 timelineMs)

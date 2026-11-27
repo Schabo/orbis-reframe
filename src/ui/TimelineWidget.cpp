@@ -302,6 +302,11 @@ void TimelineWidget::setCanPasteStabilization(bool canPaste)
     m_canPasteStab = canPaste;
 }
 
+void TimelineWidget::setReframeKeysCopied(int count)
+{
+    m_copiedKeys = count;
+}
+
 void TimelineWidget::setActiveClip(int clipId)
 {
     if (clipId == m_activeClipId)
