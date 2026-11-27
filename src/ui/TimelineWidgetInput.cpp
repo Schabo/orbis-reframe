@@ -878,16 +878,29 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         const Row &r = m_rows[h.row];
         const qint64 splitSrc = r.clip.trimInMs + std::llround((atMs - r.startMs) * r.clip.speed);
         // The keys selected in its lane, first: what a right-click on them
-        // is most likely for.
+        // is most likely for. Then a copied block, which pastes at the
+        // playhead when it is inside this clip.
+        const bool selectionHere = keySelectionClipId() == r.clip.id;
+        const bool playheadInClip = m_playheadMs >= r.startMs && m_playheadMs < r.startMs + r.durMs;
+        const qint64 playheadSrc =
+            r.clip.trimInMs + std::llround((m_playheadMs - r.startMs) * r.clip.speed);
         QAction *copyKeys = nullptr;
+        QAction *pasteKeys = nullptr;
         QAction *deleteKeys = nullptr;
-        if (keySelectionClipId() == r.clip.id) {
+        if (selectionHere) {
             copyKeys = menu.addAction(tr("Copy keyframes (%1)").arg(m_keySel.keys.size()));
             copyKeys->setObjectName(QStringLiteral("keysCopyAction"));
+        }
+        if (m_copiedKeys > 0 && playheadInClip) {
+            pasteKeys = menu.addAction(tr("Paste keyframes (%1)").arg(m_copiedKeys));
+            pasteKeys->setObjectName(QStringLiteral("keysPasteAction"));
+        }
+        if (selectionHere) {
             deleteKeys = menu.addAction(tr("Delete keyframes (%1)").arg(m_keySel.keys.size()));
             deleteKeys->setObjectName(QStringLiteral("keysDeleteAction"));
-            menu.addSeparator();
         }
+        if (copyKeys || pasteKeys || deleteKeys)
+            menu.addSeparator();
         QAction *split = menu.addAction(tr("Split here"));
         split->setEnabled(splitSrc > r.clip.trimInMs + kMinTrimMs
                           && splitSrc < r.clip.trimOutMs - kMinTrimMs);
@@ -940,7 +953,9 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         QAction *chosen = menu.exec(e->globalPos());
         if (!chosen)
             return;
-        if (copyKeys && chosen == copyKeys)
+        if (pasteKeys && chosen == pasteKeys)
+            emit keysPasteRequested(r.clip.id, playheadSrc);
+        else if (copyKeys && chosen == copyKeys)
             emit keysCopyRequested(r.clip.id, m_keySel.keys);
         else if (deleteKeys && chosen == deleteKeys)
             deleteSelectedKeys();

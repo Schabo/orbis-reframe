@@ -326,6 +326,10 @@ The later keyframes keep their distance from it. Keyframes at 1.0 s and 3.0 s
 pasted at 2.5 s land at 2.5 s and 4.5 s. A keyframe within 0.15 seconds of a
 target position is replaced there.
 
+**Paste keyframes (N)** in the clip's menu does the same at the playhead, when
+the playhead is inside that clip. It writes the copy on the clip you
+right-clicked.
+
 The Reframe section keeps the copy for the session, also across projects. It
 is not saved in the project file.
 
