@@ -167,9 +167,13 @@ forward-view motion left, Direction lock 0.62°/frame against 1.09 unstabilized
 1.6° roll / 0.7° pitch of gravity.
 
 The picture's turn fits best with the gyro ~10 ms later than the frame's time (both
-clips; 0, +10, +20 ms scored 10.40 / 9.89 / 10.43 on the first). ⚠️ Likely the
-rolling shutter (the middle row is read about that long after the first) rather than
-a clock offset; not applied yet — the readout time per mode is the thing to measure.
+clips; 0, +10, +20 ms scored 10.40 / 9.89 / 10.43 on the first). In the stabilizer,
+Direction lock leaves 0.618 / 0.554 / **0.537** / 0.571 / 0.627 deg/frame at 0 / +5 /
++10 / +15 / +20 ms on `GS012267.360`, and 0.587 → 0.562 at 0 → +10 ms on
+`GS012268.360`. ✅ *Applied:* the reader's frame times run 10 ms later on the gyro's
+clock. ⚠️ Most likely the sensor's middle row read that long after the frame's time
+(a rolling shutter), not a clock offset; a per-mode readout would say, and the
+in-camera cube leaves no per-row correction to apply.
 
 `CameraOrientation` at ~25 Hz is GoPro's own per-frame estimate of where the camera
 is pointing. ❓ its convention and accuracy are unknown, but it is the natural thing

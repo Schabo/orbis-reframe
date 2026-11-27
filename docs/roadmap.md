@@ -130,8 +130,9 @@ each is in its document in [`formats/`](formats/README.md).
   viewport, export, the blur) lives in `NativeStitchSource` and takes the
   picture through one shader function, so a second source would have had
   to copy all of it. The gyro's axis map is measured from the picture
-  (formats/gopro-max.md, *Gyro axes*). Next: the readout time (the gyro
-  fits ~10 ms after the frame time), split takes, and the seam's parallax.
+  (formats/gopro-max.md, *Gyro axes*). The picture lags the gyro's frame
+  times by 10 ms, measured and applied. Next: split takes, and the seam's
+  parallax.
 - **Insta360 Luna**: a flat camera, so the flat-video path; needs the
   10-bit / log handling there, through LUTs.
 - Not planned: the ONE X / ONE R / ONE RS.

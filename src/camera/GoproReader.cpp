@@ -515,11 +515,18 @@ std::optional<orbiscore::ImuTrack> GoproReader::readImu(const ClipMetadata& clip
     // and the track time that sample's gyro STMP, so each pair is exact by
     // construction and the model interpolates between them (measured: the
     // fit's residuals stay under 0.7 ms, the slope within 5 ppm of 1).
+    // The picture's motion lines up with the gyro 10 ms after the packet
+    // pairs say: measured from the picture on two clips (the frame-to-frame
+    // turn fits best at +10 ms, and the stabilizer leaves 0.54 instead of
+    // 0.62 deg/frame on GS012267.360, 0.56 instead of 0.59 on GS012268.360;
+    // docs/formats/gopro-max.md [[gyro axes]]) -- most likely the sensor's
+    // middle row read that long after the frame's time.
+    constexpr double kPictureLagSec = 0.010;
     const int64_t t0 = gyro.t0Us;
     for (size_t i = 0; i < gyro.chunks.size(); ++i) {
         track.frameTimes.push_back(
             {static_cast<double>(gyro.ptsUs[i]) / 1e6,
-             static_cast<double>(gyro.chunks[i].stmpUs - t0) / 1e6});
+             static_cast<double>(gyro.chunks[i].stmpUs - t0) / 1e6 + kPictureLagSec});
     }
     track.hasOffset = true;
     track.offsetSec = track.frameTimes.empty() ? 0.0 : track.frameTimes.front().trackSec;
