@@ -211,8 +211,7 @@ int main(int argc, char *argv[])
     // doesn't hold up the window; the startup warning waits for it.
     exportpipe::probeHwEncodersInBackground();
 
-    MainWindow window(&vulkanInstance);
-    window.resize(1280, 760);
+    MainWindow window(&vulkanInstance); // the size comes from the last close
 
     // A path on the command line: a *.orp file loads that project, anything
     // else is opened as a source clip. The open and the first stitch happen on

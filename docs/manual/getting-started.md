@@ -471,9 +471,9 @@ exports you save yourself, it only writes:
   and the projects folder. Deleting it empties the list (projects in the
   projects folder still show up); no project is deleted.
 - `~/.config/orbis-reframe/orbis-reframe.conf`: your settings, such as the
-  theme, the window layout and which startup warnings and untested-camera
-  notices you've chosen not to see again. Delete it to go back to the
-  defaults.
+  theme, the window's size and layout, and which startup warnings and
+  untested-camera notices you've chosen not to see again. Delete it to go
+  back to the defaults.
 
 ## If it doesn't start
 
