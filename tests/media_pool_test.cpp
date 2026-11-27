@@ -255,6 +255,27 @@ void testMediaTab()
     CHECK(!remove->isEnabled());
     CHECK(add->isEnabled());
 
+    // The files themselves: not for one in use, nor one that isn't on the
+    // disk; a free selection offers both, and the panel only asks.
+    auto *trash = find<QAction>(&panel, "mediaMoveToTrashAction");
+    auto *wipe = find<QAction>(&panel, "mediaDeletePermanentlyAction");
+    if (!trash || !wipe)
+        return;
+    CHECK(!trash->isEnabled() && !wipe->isEnabled());
+    panel.selectPaths({gone});
+    CHECK(!trash->isEnabled() && !wipe->isEnabled());
+    panel.selectPaths({clip2, song});
+    CHECK(trash->isEnabled() && wipe->isEnabled());
+    QSignalSpy trashSpy(&panel, &MediaPoolPanel::moveToTrashRequested);
+    QSignalSpy wipeSpy(&panel, &MediaPoolPanel::deletePermanentlyRequested);
+    trash->trigger();
+    CHECK(trashSpy.size() == 1 &&
+          trashSpy.first().first().toStringList() == (QStringList{clip2, song}));
+    wipe->trigger();
+    CHECK(wipeSpy.size() == 1 &&
+          wipeSpy.first().first().toStringList() == (QStringList{clip2, song}));
+    CHECK(pool.contains(clip2) && pool.contains(song)); // the panel didn't touch them
+
     // Locate file…: only for one missing file; double-clicking a missing
     // file asks for it too, instead of adding it.
     auto *locate = find<QAction>(&panel, "mediaLocateAction");

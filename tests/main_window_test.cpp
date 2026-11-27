@@ -720,6 +720,63 @@ void testWindowGeometry(const Ctx &c)
     testNormalCloseAfterMaximizedRestart();
 }
 
+// The Media tab's two file-system removals: both ask first, Cancel leaves
+// the file, and a take loses its companion files too.
+void testRemoveFromFileSystem(const Ctx &c)
+{
+    std::printf("  remove from file system\n");
+    auto *trash = action(c, "mediaMoveToTrashAction");
+    auto *wipe = action(c, "mediaDeletePermanentlyAction");
+    auto *panel = c.w->findChild<MediaPoolPanel *>();
+    MediaPool *pool = c.project->mediaPool();
+    if (!trash || !wipe || !panel)
+        return;
+    const auto add = [&](const QString &name, const QStringList &companions = {}) {
+        const QString path = QDir(c.dir).filePath(name);
+        writeFile(path);
+        for (const QString &file : companions)
+            writeFile(QDir(c.dir).filePath(file));
+        MediaItem item;
+        item.path = path;
+        item.kind = MediaItem::Kind::Audio;
+        item.durationMs = 1000;
+        for (const QString &file : companions)
+            item.companions << QDir(c.dir).filePath(file);
+        CHECK(pool->add(item));
+        return path;
+    };
+
+    // Cancel: nothing changes.
+    const QString kept = add(QStringLiteral("kept.wav"));
+    panel->selectPaths({kept});
+    CHECK(trash->isEnabled() && wipe->isEnabled());
+    answerMessageBox(QStringLiteral("Cancel"));
+    trash->trigger();
+    CHECK(QFile::exists(kept) && pool->contains(kept));
+
+    // For good: the file and its item go.
+    const QString wiped = add(QStringLiteral("wiped.wav"));
+    panel->selectPaths({wiped});
+    answerMessageBox(QStringLiteral("Delete Permanently"));
+    wipe->trigger();
+    CHECK(!QFile::exists(wiped) && !pool->contains(wiped));
+
+    // To the trash: the file leaves the disk and the pool too.
+    const QString binned = add(QStringLiteral("binned.wav"));
+    panel->selectPaths({binned});
+    answerMessageBox(QStringLiteral("Move to Trash"));
+    trash->trigger();
+    CHECK(!QFile::exists(binned) && !pool->contains(binned));
+
+    // A take's companion goes with it.
+    const QString lead = add(QStringLiteral("take.wav"), {QStringLiteral("take-2.wav")});
+    panel->selectPaths({lead});
+    answerMessageBox(QStringLiteral("Delete Permanently"));
+    wipe->trigger();
+    CHECK(!QFile::exists(lead) && !QFile::exists(QDir(c.dir).filePath("take-2.wav")) &&
+          !pool->contains(lead));
+}
+
 void testOpenClip(const Ctx &c)
 {
     c.w->openClip(c.clipA);
@@ -3863,6 +3920,7 @@ int main(int argc, char **argv)
             testNaturalReachesViewport(c);
             testEmptyTimelineStops(c);
             testOpenTakeFile(c); // replaces the project
+            testRemoveFromFileSystem(c);
         }
     }
     testWindowGeometry(c);
