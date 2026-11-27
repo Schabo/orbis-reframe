@@ -137,12 +137,22 @@ same chip powers the X4; the X5 adds two imaging chips).
 - 📖 Gyroflow maps the X4's IMU with `yzX`, the same as the X5 (X5 §6.3). So
   our measured X5 mapping `z,-x,-y` may hold; it must be measured again on
   an X4 clip, the same way.
-- ❓ X4 Air: telemetry-parser's orientation table has no X4 Air entry, so it
-  gets that library's default (`Xyz`) -- an omission, not a measurement.
-  The app uses the X5's `z,-x,-y` for it; it must be measured.
-  ⚠️ Our clip agrees on the vertical: gravity on raw x at rest (−1.00 g,
-  the X5's sphere Y ← −raw x), and the turns about the vertical are on raw
-  x. It has almost no pitch or roll, so the other two axes are unchecked.
+- ✅ X4 Air: the X5's `z,-x,-y` holds on our clip (`residual_stab
+  --diagnose`, 5-20.5 s). telemetry-parser's orientation table has no X4
+  Air entry (that library's default `Xyz` is an omission, not a
+  measurement). Gravity is on raw x at rest (−1.00 g, the X5's sphere Y ←
+  −raw x). The image-against-gyro sweep picks the X5's permutation (two
+  axes swapped: correlation 1.61 -> 1.20 of 2). Under Direction lock the
+  forward view keeps 0.084 / 0.023 °/frame of yaw / pitch pan; with any
+  one axis's sign flipped, 10-13 times as much (the vertical in yaw, the
+  other two in pitch). Roll shows only through the stick's 2-7° tilt, so
+  a clip with deliberate turns about each axis would settle it fully.
+- ✅ X4 Air capture timing: the X5's (field 28 + the model's −0.5 ms, each
+  row at mid-exposure, X5 §7.1) holds. The app's per-clip sync fine-tune
+  (`residual_stab --auto-sync`) finds −0.2 to 0.0 ms on three 7 s windows
+  and on the turn, the image-against-gyro sweep −2.0 to −0.1 ms, at a
+  0.5 ms exposure. One exposure only, so the mid-exposure rule itself is
+  untested on this camera.
 
 ## Split recordings (X4 Air)
 
@@ -248,7 +258,7 @@ are the X5's (X5 §3.4).
 | Me Mode | 4K 3840×2160 30 / 25 / 24, 2.7K 2720×1536 60…24, 1080p 120 / 100 | `.insv` | none | wanted |
 | 360 Photo (HDR, Interval, Starlapse, Burst; PureShot, RAW) | 29 MP 7680×3840 | `.insp`; `.jpg` with in-camera stitching; `.dng` with RAW | none | wanted, low |
 | Replaceable lenses | | | none | **a clip before and after a lens swap**: does the calibration change, is there a profile per lens |
-| IMU axes | | | none | **a moving clip with deliberate turns about each axis** |
+| IMU axes | | | the 6K clip (turns about the vertical, a stick's shake) | **partial**: the X5's map and timing hold (above); a clip with deliberate turns about each axis, for roll |
 
 The most useful first set, 10–30 s each, straight from the card with the
 whole folder (`DCIM` and `MISC`), as in "Sample clips wanted"
