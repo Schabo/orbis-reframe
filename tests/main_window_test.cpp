@@ -383,15 +383,18 @@ void failOnDialog(int ms)
 }
 
 // Presses the message box's button whose text has `text` (mnemonics ignored).
-void answerMessageBox(const QString &text)
+// When `shows` isn't empty, the box's text must contain it.
+void answerMessageBox(const QString &text, const QString &shows = {})
 {
-    whenDialog([text](QWidget *w) {
+    whenDialog([text, shows](QWidget *w) {
         auto *box = qobject_cast<QMessageBox *>(w);
         CHECK(box);
         if (!box) {
             w->close();
             return;
         }
+        if (!shows.isEmpty())
+            CHECK(box->text().contains(shows));
         for (QAbstractButton *b : box->buttons())
             if (b->text().remove(QLatin1Char('&')) == text) {
                 b->click();
@@ -775,6 +778,46 @@ void testRemoveFromFileSystem(const Ctx &c)
     wipe->trigger();
     CHECK(!QFile::exists(lead) && !QFile::exists(QDir(c.dir).filePath("take-2.wav")) &&
           !pool->contains(lead));
+
+    // A companion that can't be removed: the lead file goes, the item stays,
+    // and the warning names the companion.
+    const QString blocked = add(QStringLiteral("blocked.wav"),
+                                {QStringLiteral("blocked-2.wav")});
+    const QString blockedOther = QDir(c.dir).filePath(QStringLiteral("blocked-2.wav"));
+    CHECK(QFile::remove(blockedOther));
+    CHECK(QDir().mkpath(blockedOther));
+    writeFile(blockedOther + QStringLiteral("/keep.txt"));
+    panel->selectPaths({blocked});
+    answerMessageBox(QStringLiteral("Delete Permanently"));
+    answerMessageBox(QStringLiteral("OK"), QStringLiteral("blocked-2.wav"));
+    wipe->trigger();
+    CHECK(!QFile::exists(blocked) && QFileInfo(blockedOther).isDir() &&
+          pool->contains(blocked));
+
+    // Gone between the selection and the click: treated as removed.
+    const QString vanished = add(QStringLiteral("vanished.wav"));
+    panel->selectPaths({vanished});
+    CHECK(wipe->isEnabled());
+    CHECK(QFile::remove(vanished));
+    answerMessageBox(QStringLiteral("Delete Permanently"));
+    wipe->trigger();
+    CHECK(!pool->contains(vanished));
+
+    // A recording split over two files: the later part goes too.
+    const QString part1 = QDir(c.dir).filePath(QStringLiteral("split-1.wav"));
+    const QString part2 = QDir(c.dir).filePath(QStringLiteral("split-2.wav"));
+    writeFile(part1);
+    writeFile(part2);
+    MediaItem split;
+    split.path = part1;
+    split.kind = MediaItem::Kind::Audio;
+    split.durationMs = 2000;
+    split.parts = {{part1, 0, 1000}, {part2, 1000, 1000}};
+    CHECK(pool->add(split));
+    panel->selectPaths({part1});
+    answerMessageBox(QStringLiteral("Delete Permanently"));
+    wipe->trigger();
+    CHECK(!QFile::exists(part1) && !QFile::exists(part2) && !pool->contains(part1));
 }
 
 void testOpenClip(const Ctx &c)
