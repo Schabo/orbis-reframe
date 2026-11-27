@@ -34,23 +34,19 @@ using Bytes = std::vector<uint8_t>;
 
 constexpr double kG = 9.80665;
 
-// The modes measured on real clips (docs/formats/gopro-max.md): the stream
-// size and the mode the camera calls it. The MAX's 5.6K is three 1344 px
-// faces plus a 64 px pad; MAX2's 6.4K is unverified and not here.
-struct GoproMode {
-    int width, height;
-    const char* name;
-};
+// What has been measured, per model and recording mode
+// (docs/formats/gopro-max.md, *Modes and sample clips*). A new mode is a new
+// row: nothing below reads a size or a model's name itself.
 const GoproMode kModes[] = {
-    {4096, 1344, "5.6K"},
+    // The MAX's 5.6K: the layout measured against FFmpeg's stitch and
+    // stated by the file's PMOD; the axes and the lag measured from the
+    // picture's own frame-to-frame turn on two clips (*Gyro axes*).
+    {"GoPro Max", 4096, 1344, "5.6K", {1344, 1376, 64}, "-y,x,z", 0.010},
 };
 
-const char* modeName(int width, int height) {
-    for (const GoproMode& m : kModes)
-        if (m.width == width && m.height == height)
-            return m.name;
-    return "";
-}
+// A model or mode not in the table: the MAX's IMU axes and picture lag, no
+// layout of its own (the file's, else the size's relations, see read()).
+const GoproMode kUnmeasured = {"", 0, 0, "", {}, "-y,x,z", 0.010};
 
 std::string lower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(),
@@ -218,9 +214,8 @@ std::string sibling(const fs::path& path, const std::string& ext) {
 // One motion stream of the track, every sample's rows lined up: the rows
 // themselves, the rate measured from dTSMP/dSTMP between samples, and the
 // clock pair of each sample (its first row's camera time and the packet's
-// video time). STMP is the first row's time, measured (docs/NOTES.md: the
-// streams' STMPs agree to ~1.7 ms inside a sample, which only holds for a
-// common start).
+// video time). STMP is the first row's time: the streams' STMPs inside one
+// sample agree to ~1.7 ms, which only holds for a common start.
 struct MotionStream {
     double rateHz = 0.0;
     int64_t t0Us = 0; // the first sample's STMP
@@ -239,9 +234,9 @@ struct MotionStream {
     bool ready() const { return chunks.size() >= 2 && rateHz > 0.0; }
 
     // The camera time of row `n` of chunk `i`, microseconds: forward from
-    // the chunk's STMP at the measured rate, as the reference decoder
-    // (tools/gpmf_imu.py) places them and the horizon-locked render verified
-    // them. A chunk's rows then end ~1 ms before the next chunk's STMP —
+    // the chunk's STMP at the measured rate (the backward reading puts every
+    // join of a clip out of order). A chunk's rows then end ~1 ms before the
+    // next chunk's STMP —
     // the per-chunk STMP gaps run slightly longer than the rows they bound —
     // and readImu clamps the join to stay strictly ordered if a chunk's own
     // rate ever dips below the median far enough to close that margin.
@@ -264,9 +259,8 @@ struct MotionStream {
         }
         if (chunks.size() < 2)
             return false;
-        // The rate: the median of the per-chunk dTSMP / dSTMP, as the
-        // reference decoder (tools/gpmf_imu.py) measures it — 801.589 Hz on
-        // a gyro that calls itself 800. The global dTSMP / dSTMP over the
+        // The rate: the median of the per-chunk dTSMP / dSTMP — 801.589 Hz
+        // on a gyro that calls itself 800. The global dTSMP / dSTMP over the
         // whole track is not that: the camera stops mid-sample at the end
         // of a clip, and the last chunk's 128 rows against its full STMP
         // span drag GS012267's global fit down to 790.6 Hz.
@@ -312,7 +306,120 @@ std::vector<std::array<double, 3>> bodyRows(const orbiscore::GpmfStream& st) {
     return out;
 }
 
+// The global settings GPMF (moov/udta/GPMF), empty when the file has none
+// or can't be read. The MAX writes it at the front, in the `moov` it puts
+// before the media.
+Bytes readSettingsGpmf(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f)
+        return {};
+    f.seekg(0, std::ios::end);
+    const uint64_t fileEnd = static_cast<uint64_t>(std::max<std::streamoff>(f.tellg(), 0));
+    // The box named `type` among the boxes from `from` to `to`: its payload's
+    // start and end.
+    const auto find = [&](uint64_t from, uint64_t to, const char* type, uint64_t& start,
+                          uint64_t& end) {
+        uint64_t at = from;
+        while (at + 8 <= to) {
+            uint8_t h[16];
+            f.clear();
+            f.seekg(static_cast<std::streamoff>(at));
+            if (!f.read(reinterpret_cast<char*>(h), 8))
+                return false;
+            uint64_t size = (uint64_t(h[0]) << 24) | (uint64_t(h[1]) << 16) |
+                            (uint64_t(h[2]) << 8) | h[3];
+            uint64_t header = 8;
+            if (size == 1) {
+                if (!f.read(reinterpret_cast<char*>(h + 8), 8))
+                    return false;
+                size = 0;
+                for (int k = 8; k < 16; ++k)
+                    size = size << 8 | h[k];
+                header = 16;
+            } else if (size == 0) {
+                size = to - at;
+            }
+            if (size < header || at + size > to)
+                return false;
+            if (std::equal(type, type + 4, reinterpret_cast<const char*>(h + 4))) {
+                start = at + header;
+                end = at + size;
+                return true;
+            }
+            at += size;
+        }
+        return false;
+    };
+    uint64_t moovA, moovB, udtaA, udtaB, gpmfA, gpmfB;
+    if (!find(0, fileEnd, "moov", moovA, moovB) || !find(moovA, moovB, "udta", udtaA, udtaB) ||
+        !find(udtaA, udtaB, "GPMF", gpmfA, gpmfB) || gpmfB - gpmfA > (1u << 20))
+        return {};
+    Bytes b(gpmfB - gpmfA);
+    f.clear();
+    f.seekg(static_cast<std::streamoff>(gpmfA));
+    if (!f.read(reinterpret_cast<char*>(b.data()), static_cast<std::streamsize>(b.size())))
+        return {};
+    return b;
+}
+
+// A tag's whole-number values (GPMF types b B s S l L j J, big endian);
+// empty when the settings don't have it or it holds something else.
+std::vector<int64_t> settingsInts(const Bytes& gpmf, const char* tag) {
+    std::vector<int64_t> out;
+    orbiscore::WalkGpmf(gpmf.data(), gpmf.size(), [&](const orbiscore::GpmfEvent& e) {
+        if (e.isStruct || e.tag != std::string_view(tag, 4))
+            return true;
+        const bool isSigned = std::islower(static_cast<unsigned char>(e.type));
+        const size_t width = std::tolower(e.type) == 'b'   ? 1
+                             : std::tolower(e.type) == 's' ? 2
+                             : std::tolower(e.type) == 'l' ? 4
+                             : std::tolower(e.type) == 'j' ? 8
+                                                           : 0;
+        if (width == 0 || e.payload.size() % width != 0)
+            return false;
+        for (size_t at = 0; at < e.payload.size(); at += width) {
+            uint64_t v = 0;
+            for (size_t k = 0; k < width; ++k)
+                v = v << 8 | static_cast<uint8_t>(e.payload[at + k]);
+            if (isSigned && width < 8 && (v >> (8 * width - 1)) != 0)
+                v |= ~uint64_t(0) << (8 * width);
+            out.push_back(static_cast<int64_t>(v));
+        }
+        return false;
+    });
+    return out;
+}
+
 } // namespace
+
+const GoproMode& FindGoproMode(const std::string& model, int width, int height, bool* known) {
+    for (const GoproMode& m : kModes)
+        if (lower(model) == lower(m.model) && m.width == width && m.height == height) {
+            if (known)
+                *known = true;
+            return m;
+        }
+    if (known)
+        *known = false;
+    return kUnmeasured;
+}
+
+std::optional<orbiscore::EacLayout> LayoutFromPmod(const std::vector<int64_t>& pmod, int width,
+                                                   int height) {
+    // PMOD = [32, 1408, 1376] on every 5.6K file: half the overlap, then
+    // 1408 (the centre face and the overlap, or a side region and half the
+    // overlap: the one mode can't tell), then a side region. The centre is
+    // what the side regions leave of the strip, and a face: as tall as wide.
+    if (pmod.size() != 3 || pmod[0] <= 0 || pmod[2] <= 0 || pmod[2] > width)
+        return std::nullopt;
+    orbiscore::EacLayout l;
+    l.overlap = static_cast<int>(2 * pmod[0]);
+    l.side = static_cast<int>(pmod[2]);
+    l.centre = width - 2 * l.side;
+    if (!l.fits(width) || l.centre != height)
+        return std::nullopt;
+    return l;
+}
 
 CameraReader::Result GoproReader::read(const std::vector<orbiscore::InsvStreamInfo>& streams,
                                        ClipMetadata& out, std::string& err) const {
@@ -329,11 +436,40 @@ CameraReader::Result GoproReader::read(const std::vector<orbiscore::InsvStreamIn
     out.model = modelAfter(head, mark);
     out.serial = printableBefore(head, mark);
     out.projection = Projection::EquiAngularCube;
-    out.captureMode = modeName(out.lensWidth, out.lensHeight);
-    if (out.captureMode.empty())
-        std::fprintf(stderr, "[camera] %s: a GoPro 360 at %dx%d, a stream size we have not "
-                             "measured; taking the faces as the 5.6K layout\n",
-                     out.path.c_str(), out.lensWidth, out.lensHeight);
+    bool known = false;
+    const GoproMode& mode = FindGoproMode(out.model, out.lensWidth, out.lensHeight, &known);
+    out.untestedModel = !known;
+    out.captureMode = mode.name;
+    if (!known)
+        std::fprintf(stderr, "[camera] %s: no table entry for the %s at %dx%d; its IMU axes and "
+                             "timing taken as the MAX's 5.6K, untested\n",
+                     out.path.c_str(), out.model.c_str(), out.lensWidth, out.lensHeight);
+
+    // Where the faces are: the file's own numbers (PMOD, in the global
+    // settings), else the table's, else the relations the 5.6K layout keeps
+    // (centre = the stream's height, side = what's left halved, overlap =
+    // twice the side's excess over the centre).
+    if (const auto stated =
+            LayoutFromPmod(settingsInts(readSettingsGpmf(out.path), "PMOD"), out.lensWidth,
+                           out.lensHeight)) {
+        out.cubeLayout = *stated;
+        if (known && !(mode.layout == *stated))
+            std::fprintf(stderr, "[camera] %s: the file's cube layout (PMOD) differs from the "
+                                 "table's for the %s; taking the file's\n",
+                         out.path.c_str(), mode.name);
+    } else if (known) {
+        out.cubeLayout = mode.layout;
+        std::fprintf(stderr, "[camera] %s: no usable PMOD; the cube layout from the table\n",
+                     out.path.c_str());
+    } else {
+        orbiscore::EacLayout& l = out.cubeLayout;
+        l.centre = out.lensHeight;
+        l.side = (out.lensWidth - l.centre) / 2;
+        l.overlap = 2 * (l.side - l.centre);
+        std::fprintf(stderr, "[camera] %s: no usable PMOD; the cube layout taken from the "
+                             "stream size as the 5.6K's relations, untested\n",
+                     out.path.c_str());
+    }
 
     GpmdFile file;
     if (!file.open(out.path)) {
@@ -346,9 +482,9 @@ CameraReader::Result GoproReader::read(const std::vector<orbiscore::InsvStreamIn
         out.recordedLocal = created.substr(0, 19);
 
     // The two cube streams, in file order: lens A's faces first. No lens
-    // calibration is filled: the EAC path's geometry is fixed by the
-    // projection, and the fisheye calibration in the file belongs to the
-    // .LRV path (docs/formats/gopro-max.md [[calibration]]).
+    // calibration is filled: the cube's geometry is the layout above, and the
+    // fisheye calibration in the file's settings describes the lenses before
+    // the camera made the cube (the .LRV's picture).
     out.lenses.resize(2);
     out.lenses[0].source = {out.path, 0};
     out.lenses[1].source = {out.path, 1};
@@ -365,9 +501,9 @@ CameraReader::Result GoproReader::read(const std::vector<orbiscore::InsvStreamIn
     for (const Lens& l : out.lenses)
         part.lenses.push_back(l.source);
     out.parts = {std::move(part)};
-    // A take split into GSnnnnnnN.360 files is not joined yet: the parts
-    // are linked by the camera clock (docs/formats/gopro-max.md [[split
-    // files]]), which is the IMU's job first. One file, one clip.
+    // A take split into GS01nnnn.360, GS02nnnn.360, ... files is not joined
+    // yet: the files are linked by the camera clock in their telemetry
+    // (docs/formats/gopro-max.md, *Chapters*). One file, one clip.
 
     // The motion: the gyro's rate, measured from the first two sensor
     // samples rather than assumed.
@@ -384,13 +520,6 @@ CameraReader::Result GoproReader::read(const std::vector<orbiscore::InsvStreamIn
         if (gyro.collect(samples, packets, "Gyroscope", "GYRO")) {
             out.hasMotion = true;
             out.imuRateHz = gyro.rateHz;
-            if (getenv("GOPRO_DEBUG"))
-                std::fprintf(stderr, "[gopro-dbg] chunks=%zu front=%lld/%llu back=%lld/%llu "
-                                     "packets=%zu\n",
-                             gyro.chunks.size(), (long long)gyro.chunks.front().stmpUs,
-                             (unsigned long long)gyro.chunks.front().tsmp,
-                             (long long)gyro.chunks.back().stmpUs,
-                             (unsigned long long)gyro.chunks.back().tsmp, packets.size());
         }
     }
     return Result::Read;
@@ -503,30 +632,23 @@ std::optional<orbiscore::ImuTrack> GoproReader::readImu(const ClipMetadata& clip
         track.samples.push_back(s);
     }
     // The samples are in camera body axes (MTRX applied above). The map to
-    // the stitch's world (+X right, +Y up, -Z forward) is measured from the
-    // picture: each candidate signed permutation turns frame k by the gyro's
-    // turn to frame k + 1, and only this one explains the frame-to-frame
-    // motion (30.5 % of the photometric change on GS012267.360, 32.5 % on
-    // GS012268.360; the runner-up 3.4 % / 9.7 %, the X5's z,-x,-y none;
-    // docs/formats/gopro-max.md [[gyro axes]]).
-    track.axisMap = "-y,x,z";
+    // the stitch's world (+X right, +Y up, -Z forward) isn't in the file: the
+    // table's, measured from the picture's own turn.
+    const GoproMode& mode = FindGoproMode(clip.model, clip.lensWidth, clip.lensHeight);
+    track.axisMap = mode.imuAxes;
 
     // One frameTimes pair per sensor sample: video time is the packet's PTS
     // and the track time that sample's gyro STMP, so each pair is exact by
     // construction and the model interpolates between them (measured: the
     // fit's residuals stay under 0.7 ms, the slope within 5 ppm of 1).
-    // The picture's motion lines up with the gyro 10 ms after the packet
-    // pairs say: measured from the picture on two clips (the frame-to-frame
-    // turn fits best at +10 ms, and the stabilizer leaves 0.54 instead of
-    // 0.62 deg/frame on GS012267.360, 0.56 instead of 0.59 on GS012268.360;
-    // docs/formats/gopro-max.md [[gyro axes]]) -- most likely the sensor's
-    // middle row read that long after the frame's time.
-    constexpr double kPictureLagSec = 0.010;
+    // The picture's motion lines up with the gyro later than the packet
+    // pairs say, by the table's lag -- most likely the sensor's middle row
+    // read that long after the frame's time.
     const int64_t t0 = gyro.t0Us;
     for (size_t i = 0; i < gyro.chunks.size(); ++i) {
         track.frameTimes.push_back(
             {static_cast<double>(gyro.ptsUs[i]) / 1e6,
-             static_cast<double>(gyro.chunks[i].stmpUs - t0) / 1e6 + kPictureLagSec});
+             static_cast<double>(gyro.chunks[i].stmpUs - t0) / 1e6 + mode.pictureLagSec});
     }
     track.hasOffset = true;
     track.offsetSec = track.frameTimes.empty() ? 0.0 : track.frameTimes.front().trackSec;

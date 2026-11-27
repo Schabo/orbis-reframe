@@ -61,7 +61,7 @@ struct LensFrame {
     // colour blend, the seam flow's grid, the privacy blur's region count,
     // the lenses' Y'CbCr -> R'G'B' conversion), packed by the exporter.
     // Within the 16 KiB every Vulkan device takes in a uniform buffer.
-    static constexpr int kParamsBytes = 9584;
+    static constexpr int kParamsBytes = 9600;
     std::array<uint8_t, kParamsBytes> params{};
     // The privacy blur's regions (the stitch's BlurQuads storage buffer,
     // fisheye_stitch_common.glsl): kBlurQuadFloats per region, as many as

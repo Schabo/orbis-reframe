@@ -67,9 +67,11 @@ time and finds its `.LRF`: the drone writes the clip's original name into
 both files. Its photos (stitched `.JPG`, raw `.DNG` per lens) don't open
 yet.
 
-A GoPro MAX `.360` opens, plays and exports (experimental). The camera
-stitched it already, so the Stitching panel's settings don't apply.
-Stabilization uses its gyro. A take the camera split into several files
+A GoPro MAX `.360` filmed at 5.6K opens, plays and exports
+(experimental). The camera stitched it already, so the Stitching panel's
+settings don't apply. Stabilization uses its gyro. Other GoPro 360 cameras
+and modes, such as the MAX2, open like the untested Insta360 models below:
+with the MAX's 5.6K values, and a notice saying so. A take the camera split into several files
 opens one file at a time, and the camera's preview file (`.LRV`) isn't used
 for playback.
 
@@ -81,7 +83,7 @@ When you add a clip from one, a notice says so, once per camera while
 orbis-reframe runs, with a link to the sample clips wanted; tick **Don't show
 this again for this camera** to stop it for good. Media information shows
 *⚠ Untested* under the model. Other cameras (the
-DJI Osmo 360 family, other GoPro models) don't open yet. If you have one, short clips
+DJI Osmo 360 family) don't open yet. If you have one, short clips
 from it help add it:
 [sample clips wanted](../formats/README.md#sample-clips-wanted).
 

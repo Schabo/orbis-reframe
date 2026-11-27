@@ -71,7 +71,7 @@ layout(std140, binding = 0) uniform Params {
     ivec4 dims;     // fisheyeW, fisheyeH, eqW, eqH
     // Extended MEI (Mei/unified) model. See orbiscore::LensProjection / gpuParams().
     vec4 meiA;      // xi0, xi1, fx0, fx1
-    vec4 meiB;      // fy0, fy1, EAC cube (1 = on, cubeActive), accessory(as float)
+    vec4 meiB;      // fy0, fy1, -, accessory(as float)
     vec4 kd0;       // lens 0 radial distortion k1..k4
     vec4 kd1;       // lens 1 radial distortion k1..k4
     vec4 rs;        // capture timing: x 1 = on, y 1 = scan along u (columns)
@@ -126,6 +126,10 @@ layout(std140, binding = 0) uniform Params {
     // uv and max uv (unbounded for a whole image).
     vec4 lensRect[2];
     vec4 lensBox[2];
+    // The camera's own equi-angular cubemap (orbiscore::StitchGpuParams::
+    // eacCube): its strips' centre face, side region and overlap in px
+    // (orbiscore::EacLayout), and w 1 = on (cubeActive).
+    vec4 cube;
 } P;
 
 // Lens i's colour at `uv` in its own picture (0..1 over fisheyeW x fisheyeH):
@@ -859,11 +863,11 @@ void seamStripPass(ivec2 gid)
 // The camera's own equi-angular cubemap (StitchGpuParams::eacCube, the
 // GoPro MAX): orbiscore::EacCubeStitcher's map, which says how it was
 // measured. Stream i is "lens" i, a dims.x x dims.y strip SIDE | CENTRE |
-// SIDE -- stream 0 LEFT | FRONT | RIGHT, stream 1 DOWN | BACK | TOP -- the
-// centre face dims.y square, a side face `span` px for 90 deg split at the
-// lens boundary with the `ov` px overlap between its halves, cross-faded
-// over the whole overlap.
-bool cubeActive() { return P.meiB.z == 1.0; }
+// SIDE -- stream 0 LEFT | FRONT | RIGHT, stream 1 DOWN | BACK | TOP -- laid
+// out as P.cube says: the centre face, a side region holding a side face
+// (`span` px for 90 deg) split at the lens boundary with the `ov` px overlap
+// between its halves, cross-faded over the whole overlap.
+bool cubeActive() { return P.cube.w == 1.0; }
 
 vec3 cubeSample(vec3 d)
 {
@@ -873,10 +877,10 @@ vec3 cubeSample(vec3 d)
     vec3 a = abs(p);
     float m = max(a.x, max(a.y, a.z));
     vec3 e = atan(p / m) * (4.0 / PI);
-    float W = float(P.dims.x), H = float(P.dims.y);
-    float centre = H;
-    float side = floor((W - H) * 0.5);
-    float ov = 2.0 * (side - centre);
+    float W = float(P.dims.x);
+    float centre = P.cube.x;
+    float side = P.cube.y;
+    float ov = P.cube.z;
     float span = side - ov;
     int s, region; // region 0 left, 1 centre, 2 right
     float u, v;

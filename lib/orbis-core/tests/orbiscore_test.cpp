@@ -3804,30 +3804,36 @@ void testGoproGpmf()
 
 // The GoPro MAX's in-camera cubemap: the two strips' faces onto the sphere.
 // What this pins is the layout docs/formats/gopro-max.md measured on real
-// clips and tools/eac_stitch.py reproduces -- each strip is SIDE | CENTRE |
-// SIDE (4096 = 1376 | 1344 | 1376), one stream carries the front belt
-// (FRONT/LEFT/RIGHT) and the other the back belt (BACK/TOP/DOWN), DOWN/BACK/TOP
-// are stored turned 90 deg counter-clockwise, and each side face cross-fades
-// over the 32 px where both lenses see it -- plus the face ids the seam metric
-// reads back. All synthetic, so it needs no clip: the real-clip numbers (seam
-// 5.31 for the right belt, 8.98 swapped on GS012267.360) come from the tools.
+// clips -- each strip is SIDE | CENTRE | SIDE (4096 = 1376 | 1344 | 1376),
+// one stream carries the front belt (FRONT/LEFT/RIGHT) and the other the
+// back belt (BACK/TOP/DOWN), DOWN/BACK/TOP stored turned, and each side face
+// cut at the lens boundary with the 64 px both lenses see between its
+// halves, cross-faded -- plus the face ids the seam metric reads back. All
+// synthetic, so it needs no clip; camera_test measures the real picture.
 void testEacCube()
 {
     const int SW = 4096, SH = 1344; // the 5.6K layout
     const int SIDE = 1376, CENTRE = 1344, SPAN = 1312, OVERLAP = 64;
+    const orbiscore::EacLayout L{CENTRE, SIDE, OVERLAP};
     const int OW = 720, OH = 360; // 2 px a degree
 
     {
         orbiscore::EacCubeStitcher st;
-        CHECK(st.configure(SW, SH, OW, OH));
+        CHECK(st.configure(SW, SH, L, OW, OH));
         CHECK(st.outWidth() == OW && st.outHeight() == OH);
-        // The layout's numbers from the stream size alone.
         CHECK(st.centreWidth() == CENTRE && st.sideSpan() == SPAN && st.overlap() == OVERLAP);
-        // Not a belt with an overlap: three equal faces, or a width that
-        // doesn't split into side | centre | side.
+        // A layout the strip can't hold: widths that don't add up to it,
+        // no overlap, or an overlap as wide as the face.
         orbiscore::EacCubeStitcher bad;
-        CHECK(!bad.configure(3 * SH, SH, OW, OH));
-        CHECK(!bad.configure(SW + 1, SH, OW, OH));
+        CHECK(!bad.configure(SW + 1, SH, L, OW, OH));
+        CHECK(!bad.configure(SW, SH, {CENTRE, SIDE + 1, OVERLAP}, OW, OH));
+        CHECK(!bad.configure(SW, SH, {CENTRE, SIDE, 0}, OW, OH));
+        CHECK(!bad.configure(SW, SH, {CENTRE, SIDE, SIDE / 2}, OW, OH));
+        // Another layout of the same strip is taken as given: the centre
+        // face where it says.
+        orbiscore::EacCubeStitcher other;
+        CHECK(other.configure(SW, SH, {1296, 1400, 80}, OW, OH));
+        CHECK(other.centreWidth() == 1296 && other.sideSpan() == 1320 && other.overlap() == 80);
     }
 
     // Each strip region a flat level, so a direction's level says which
@@ -3846,7 +3852,7 @@ void testEacCube()
     flat(b, 100, 120, 140);
 
     orbiscore::EacCubeStitcher st;
-    CHECK(st.configure(SW, SH, OW, OH));
+    CHECK(st.configure(SW, SH, L, OW, OH));
     orbiscore::Image eq;
     std::vector<int16_t> owner(size_t(OW) * OH);
     st.renderEquirect(a, b, eq, owner.data());
@@ -3947,7 +3953,7 @@ void testEacCube()
         orbiscore::Image small, other;
         small.alloc(2048, SH);
         other.alloc(2048, SH);
-        CHECK(std::isnan(orbiscore::EacCubeStitcher::SeamRatio(small, other)));
+        CHECK(std::isnan(orbiscore::EacCubeStitcher::SeamRatio(small, other, L)));
     }
 }
 

@@ -25,23 +25,18 @@ enum Region { kRegionLeft = 0, kRegionCenter = 1, kRegionRight = 2 };
 
 } // namespace
 
-bool EacCubeStitcher::configure(int streamW, int streamH, int outW, int outH) {
-    if (streamH <= 0 || outW < 2 || outH < 2)
-        return false;
-    const int center = streamH;
-    const int side = (streamW - center) / 2;
-    const int overlap = 2 * (side - center);
-    const int span = side - overlap;
-    if (side <= center || span <= overlap || 2 * side + center != streamW)
+bool EacCubeStitcher::configure(int streamW, int streamH, const EacLayout& layout, int outW,
+                                int outH) {
+    if (streamH <= 0 || outW < 2 || outH < 2 || !layout.fits(streamW))
         return false;
     stream_w_ = streamW;
     stream_h_ = streamH;
     out_w_ = outW;
     out_h_ = outH;
-    center_ = center;
-    side_ = side;
-    overlap_ = overlap;
-    span_ = span;
+    center_ = layout.centre;
+    side_ = layout.side;
+    overlap_ = layout.overlap;
+    span_ = layout.side - layout.overlap;
 
     // Inside a side face, where both lenses' halves reach: |u| < 2 * overlap
     // / span (each half runs on `overlap` px past the boundary at u = 0).
@@ -135,9 +130,9 @@ void EacCubeStitcher::renderEquirect(const Image& a, const Image& b, Image& out,
     }
 }
 
-double EacCubeStitcher::SeamRatio(const Image& a, const Image& b) {
+double EacCubeStitcher::SeamRatio(const Image& a, const Image& b, const EacLayout& layout) {
     EacCubeStitcher st;
-    if (!st.configure(a.w, a.h, 512, 256) || b.w != a.w || b.h != a.h)
+    if (!st.configure(a.w, a.h, layout, 512, 256) || b.w != a.w || b.h != a.h)
         return std::nan("");
     Image eq;
     std::vector<int16_t> owner(static_cast<size_t>(st.outWidth()) * st.outHeight());

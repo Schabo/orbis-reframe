@@ -8,8 +8,8 @@
 #include <vector>
 
 // GoPro's GPMF telemetry: a big-endian KLV tree, carried in a `.360`'s
-// `bin_data` track one sample per packet (docs/formats/gopro-max.md
-// [[telemetry]]). No FFmpeg: the samples come from the caller
+// `gpmd` data track one sample per packet (docs/formats/gopro-max.md,
+// *Telemetry*). No FFmpeg: the samples come from the caller
 // (camera::GoproReader demuxes them and lines them up with the video).
 //
 // The framing, as the Max writes it:
@@ -22,9 +22,9 @@
 // `size` (u16 LE); the two readings agree while the count fits in 8 bits and
 // disagree on the gyroscope, which carries 833 rows per sample — mis-sized
 // there, a parser that validates payload ends stops walking and reports the
-// gyro once instead of once per sample. Measured over the sample tree's 18
-// extracted blobs: the `size:u16le x repeat:u8` reading lands each tag's end
-// on the following tag 527 times, this one 829 times.
+// gyro once instead of once per sample. Measured over 18 sensor-track
+// blobs of the MAX clips: the `size:u16le x repeat:u8` reading lands each
+// tag's end on the following tag 527 times, this one 829 times.
 //
 // And a struct's declared size is an aggregate for the whole track, not for
 // the sample: a 10 KB sample declares a 76 KB `DEVC`. Struct sizes are

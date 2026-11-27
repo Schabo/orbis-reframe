@@ -6,8 +6,8 @@
 #include <cstring>
 
 // GoPro GPMF, as a Max writes it: see Gpmf.h for the framing and why two of
-// its details are stated at length. Everything here was checked against the
-// sample tree's clips (docs/formats/gopro-max.md [[telemetry]]).
+// its details are stated at length. Everything here was checked against
+// MAX clips (docs/formats/gopro-max.md, *Telemetry*).
 
 namespace orbiscore {
 namespace {

@@ -537,9 +537,13 @@ bool NativeStitchSource::openCube(const camera::ClipMetadata& clip,
     eq_w_ = config.width > 0 ? config.width : AutoPreviewWidth(2 * clip.lensHeight, info_.fps);
     eq_h_ = config.width > 0 && config.height > 0 ? config.height : eq_w_ / 2;
     auto cube = std::make_unique<orbiscore::EacCubeStitcher>();
-    if (!cube->configure(clip.lensWidth, clip.lensHeight, eq_w_, eq_h_)) {
+    const orbiscore::EacLayout& layout = clip.cubeLayout;
+    if (!cube->configure(clip.lensWidth, clip.lensHeight, layout, eq_w_, eq_h_)) {
         last_error_ = "the streams (" + std::to_string(clip.lensWidth) + "x" +
-                      std::to_string(clip.lensHeight) + ") aren't a three-face cube belt: " + path;
+                      std::to_string(clip.lensHeight) + ") don't hold the cube layout " +
+                      std::to_string(layout.side) + " | " + std::to_string(layout.centre) +
+                      " | " + std::to_string(layout.side) + " (overlap " +
+                      std::to_string(layout.overlap) + "): " + path;
         return false;
     }
 
@@ -571,6 +575,9 @@ bool NativeStitchSource::openCube(const camera::ClipMetadata& clip,
 
     gpu_params_ = orbiscore::StitchGpuParams{};
     gpu_params_.eacCube = 1;
+    gpu_params_.cubeCentre = layout.centre;
+    gpu_params_.cubeSide = layout.side;
+    gpu_params_.cubeOverlap = layout.overlap;
     gpu_params_.fisheyeW = clip.lensWidth;
     gpu_params_.fisheyeH = clip.lensHeight;
     for (int k = 0; k < 9; ++k) {

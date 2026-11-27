@@ -11,6 +11,7 @@
 // Exit code is the failure count.
 
 #include "ClipMetadata.h"
+#include "GoproReader.h"
 #include "MediaInfo.h"
 #include <orbis-core/stitch/BlurQuads.h>
 #include <orbis-core/stitch/EacCubeStitcher.h>
@@ -1380,6 +1381,32 @@ void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::pa
     CHECK(camera::ReadClipImu(osv.string()));
 }
 
+// The GoPro reader's table and the file's own layout, with no clip: the
+// MAX's 5.6K is a row (any case in the model's name); another model or
+// size isn't, and gets the MAX's IMU axes and lag with no layout or mode
+// name -- the clip then opens untested. PMOD gives the layout a strip can
+// hold, and nothing for one it can't.
+void testGoproModes()
+{
+    bool known = false;
+    const camera::GoproMode& max = camera::FindGoproMode("GoPro MAX", 4096, 1344, &known);
+    CHECK(known && std::string(max.name) == "5.6K" && std::string(max.imuAxes) == "-y,x,z");
+    CHECK((max.layout == orbiscore::EacLayout{1344, 1376, 64}) && max.pictureLagSec == 0.010);
+    CHECK(max.layout.fits(4096));
+    const camera::GoproMode& max2 = camera::FindGoproMode("GoPro Max2", 4096, 1344, &known);
+    CHECK(!known && std::string(max2.name).empty() && max2.layout.centre == 0);
+    CHECK(std::string(max2.imuAxes) == "-y,x,z" && max2.pictureLagSec == 0.010);
+    camera::FindGoproMode("GoPro Max", 2944, 960, &known);
+    CHECK(!known);
+
+    const auto stated = camera::LayoutFromPmod({32, 1408, 1376}, 4096, 1344);
+    CHECK(stated && (*stated == orbiscore::EacLayout{1344, 1376, 64}));
+    CHECK(!camera::LayoutFromPmod({32, 1408, 1376}, 2944, 960)); // a 192 px wide centre face
+    CHECK(!camera::LayoutFromPmod({32, 1408}, 4096, 1344));
+    CHECK(!camera::LayoutFromPmod({0, 1408, 1376}, 4096, 1344));
+    CHECK(!camera::LayoutFromPmod({700, 1408, 1376}, 4096, 1344)); // an overlap wider than the face
+}
+
 // The GoPro MAX clip, where the sample tree is there: the camera's identity
 // and streams (docs/formats/gopro-max.md), the IMU lined up with the video
 // to the residuals that document measured, the .THM preview, and the .LRV
@@ -1467,7 +1494,8 @@ void testGoproMaxSource(const std::filesystem::path& clip360)
         orbiscore::FramePts pts;
         CHECK(meta && demux.open(meta->partSources(), derr) && demux.seekTo(5000, derr) &&
               demux.readNextPair(s0, s1, &pts, derr));
-        const double ratio = orbiscore::EacCubeStitcher::SeamRatio(s0, s1);
+        const double ratio = meta ? orbiscore::EacCubeStitcher::SeamRatio(s0, s1, meta->cubeLayout)
+                                  : std::nan("");
         std::printf("  GoPro MAX face seams @%lld ms: ratio %.2f\n", (long long)pts.ms, ratio);
         CHECK(std::isfinite(ratio) && ratio < 2.0);
     }
@@ -1490,7 +1518,9 @@ void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::p
     CHECK(clip->firmware == "H19.03.02.02.00" && !clip->serial.empty());
     CHECK(clip->projection == camera::Projection::EquiAngularCube);
     CHECK(clip->lensWidth == 4096 && clip->lensHeight == 1344 && std::abs(clip->fps - 25) < 1e-6);
-    CHECK(clip->captureMode == "5.6K");
+    CHECK(clip->captureMode == "5.6K" && !clip->untestedModel);
+    // The cube layout as the file's PMOD states it, the table's 5.6K row.
+    CHECK((clip->cubeLayout == orbiscore::EacLayout{1344, 1376, 64}));
     CHECK(clip->recordedLocal == "2025-04-14T15:46:51");
     // The two cube streams, in file order; no lens calibration (the EAC
     // path's geometry is fixed by the projection).
@@ -1500,7 +1530,6 @@ void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::p
     CHECK(std::filesystem::path(clip->proxyPath).extension() == ".LRV");
     // The motion: the gyro at its measured rate (801.6 Hz over the whole
     // track, not the nominal 800).
-    std::printf("  [dbg] hasMotion=%d rate=%.3f\n", clip->hasMotion ? 1 : 0, clip->imuRateHz);
     CHECK(clip->hasMotion && std::abs(clip->imuRateHz - 801.6) < 1.0);
 
     camera::MediaInfo info;
@@ -1510,9 +1539,9 @@ void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::p
     const auto imu = camera::ReadClipImu(clip360.string());
     CHECK(imu);
     if (imu) {
-        // Body axes (MTRX applied), mapped to the stitch's world as measured
-        // from the picture's own frame-to-frame turn (go_pro_2
-        // tools/gyro_axes_fit.py; docs/formats/gopro-max.md).
+        // Body axes (MTRX applied), mapped to the stitch's world by the
+        // table's 5.6K row (measured from the picture's own turn,
+        // docs/formats/gopro-max.md *Gyro axes*).
         CHECK(imu->axisMap == "-y,x,z");
         CHECK(imu->hasOffset && imu->captureScale == 1.0);
         // ~800 Hz over 64.56 s of video.
@@ -1529,9 +1558,9 @@ void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::p
                 }
                 ordered = false;
             }
-        std::printf("  [dbg] samples=%zu ordered=%d firstBad=%zu %llu->%llu\n",
-                    imu->samples.size(), ordered ? 1 : 0, badAt,
-                    (unsigned long long)badFrom, (unsigned long long)badTo);
+        if (!ordered)
+            std::printf("  out of order at sample %zu: %llu -> %llu\n", badAt,
+                        (unsigned long long)badFrom, (unsigned long long)badTo);
         CHECK(ordered);
         // The gyro actually moves (a handheld clip) and the accelerometer
         // rides along at ~1 g (raw / SCAL). The clip is tossed about, so the
@@ -1551,8 +1580,6 @@ void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::p
         const double accelP10 = accelMag[nAcc / 10];
         std::nth_element(accelMag.begin(), accelMag.begin() + nAcc * 9 / 10, accelMag.end());
         const double accelP90 = accelMag[nAcc * 9 / 10];
-        std::printf("  [dbg] gyroMax=%.3f accelP10=%.3f accelP90=%.3f\n", gyroMax, accelP10,
-                    accelP90);
         CHECK(gyroMax > 0.5);
         CHECK(accelP10 > 0.85 && accelP90 < 1.15);
         // The clock: one frameTimes pair per sensor sample (63 for this
@@ -1628,6 +1655,7 @@ int main(int argc, char** argv)
     testMissingParts(dir);
     testIntervalPhotos(dir);
     testUntestedModel(dir);
+    testGoproModes();
     if (argc > 1) {
         // Found by name: the sample folder is sorted into sub-folders by
         // whoever keeps it, and the test shouldn't stop running when it is.
