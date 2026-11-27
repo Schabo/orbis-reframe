@@ -452,6 +452,58 @@ void testKeyLane()
     CHECK(moved.isEmpty());
 }
 
+// The clip menu copies the keys selected in its lane: Copy keyframes (N) asks
+// for their source times and keeps the selection. Without a selection it is
+// not there.
+void testKeyLaneCopy()
+{
+    Fixture f;
+    TimelineWidget::Clip a, b;
+    a.id = 1;
+    a.label = "a";
+    a.trimOutMs = a.sourceDurationMs = 10000;
+    a.keySourceMs = {1000, 3000, 5000};
+    b.id = 2;
+    b.label = "b";
+    b.trimOutMs = b.sourceDurationMs = 10000;
+    b.keySourceMs = {5000};
+    f.w.setClips({a, b});
+    const int laneY = kRulerH + kMainH - 5;
+    const auto lane = [&](qint64 ms) { return QPoint(Fixture::x(ms), laneY); };
+
+    QSignalSpy copy(&f.w, &TimelineWidget::keysCopyRequested);
+    QSignalSpy del(&f.w, &TimelineWidget::keysDeleteRequested);
+    const auto menuAt = [&](QPoint at, bool choose) {
+        QString text;
+        QTimer::singleShot(0, [&] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if (!menu)
+                return;
+            QAction *act = menu->findChild<QAction *>(QStringLiteral("keysCopyAction"));
+            if (act)
+                text = act->text();
+            if (act && choose)
+                menu->setActiveAction(act);
+            QTest::keyClick(menu, act && choose ? Qt::Key_Return : Qt::Key_Escape);
+        });
+        QContextMenuEvent e(QContextMenuEvent::Mouse, at, f.w.mapToGlobal(at));
+        QApplication::sendEvent(&f.w, &e);
+        return text;
+    };
+
+    drag(&f.w, lane(500), lane(3500));
+    CHECK(f.w.selectedKeys() == (QVector<qint64>{1000, 3000}));
+    CHECK(menuAt(QPoint(Fixture::x(4000), mainY()), true) == "Copy keyframes (2)");
+    CHECK(copy.count() == 1 && copy.last().at(0).toInt() == 1 &&
+          copy.last().at(1).value<QVector<qint64>>() == (QVector<qint64>{1000, 3000}));
+    CHECK(f.w.selectedKeys() == (QVector<qint64>{1000, 3000}));
+    CHECK(del.isEmpty());
+
+    f.w.clearKeySelection();
+    CHECK(menuAt(QPoint(Fixture::x(4000), mainY()), false).isEmpty());
+    CHECK(copy.count() == 1);
+}
+
 // An overlay clip's key lane works as a video clip's: a sweep selects its
 // look keys (clamped to it) instead of moving it, Shift adds, Delete and its
 // menu ask for them; picking another clip clears them; its left end still
@@ -508,17 +560,20 @@ void testOverlayKeyLane()
     // look keys.
     drag(&f.w, lane(6000), lane(8000));
     bool offered = false;
+    bool copyOffered = false;
     QTimer::singleShot(0, [&] {
         auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
         QAction *a = menu ? menu->findChild<QAction *>(QStringLiteral("keysDeleteAction")) : nullptr;
         offered = a && a->text() == "Delete keyframes (1)";
+        copyOffered =
+            menu && menu->findChild<QAction *>(QStringLiteral("keysCopyAction")) != nullptr;
         if (menu)
             QTest::keyClick(menu, Qt::Key_Escape);
     });
     const QPoint body(Fixture::x(6000), camTop + 10);
     QContextMenuEvent ce(QContextMenuEvent::Mouse, body, f.w.mapToGlobal(body));
     QApplication::sendEvent(&f.w, &ce);
-    CHECK(offered && f.w.hasKeySelection());
+    CHECK(offered && !copyOffered && f.w.hasKeySelection());
     QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(3000), mainY()));
     CHECK(!f.w.hasKeySelection());
     drag(&f.w, lane(6000), lane(8000));
@@ -1510,6 +1565,7 @@ int main(int argc, char **argv)
     testKeyDiamondClick();
     testReframeKeyCopyMenu();
     testKeyLane();
+    testKeyLaneCopy();
     testOverlayKeyLane();
     testMarkDotClick();
     testMarkMenus();
