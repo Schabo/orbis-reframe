@@ -851,12 +851,32 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     m_removeAction->setShortcuts({QKeySequence(Qt::Key_Delete), QKeySequence(Qt::Key_Backspace)});
     m_removeAction->setShortcutContext(Qt::WidgetShortcut);
     connect(m_removeAction, &QAction::triggered, this, &MediaPoolPanel::removeSelected);
+    // The files themselves: to the trash, or gone for good. MainWindow asks
+    // first and deletes a take's other files too.
+    m_trashAction =
+        new QAction(theme::icon(QStringLiteral("trash-2")),
+                    tr("Remove from file system (move to trash)"), this);
+    m_trashAction->setObjectName(QStringLiteral("mediaMoveToTrashAction"));
+    connect(m_trashAction, &QAction::triggered, this, [this] {
+        const QStringList paths = selectedPaths();
+        if (m_trashAction->isEnabled() && !paths.isEmpty())
+            emit moveToTrashRequested(paths);
+    });
+    m_deleteAction = new QAction(tr("Remove from file system (no way to undelete)"), this);
+    m_deleteAction->setObjectName(QStringLiteral("mediaDeletePermanentlyAction"));
+    connect(m_deleteAction, &QAction::triggered, this, [this] {
+        const QStringList paths = selectedPaths();
+        if (m_deleteAction->isEnabled() && !paths.isEmpty())
+            emit deletePermanentlyRequested(paths);
+    });
     auto *separator = new QAction(this);
     separator->setSeparator(true);
+    auto *fileSeparator = new QAction(this);
+    fileSeparator->setSeparator(true);
     // The same actions on both views: context menu and keys (Delete)
     // follow whichever is shown.
-    const QList<QAction *> actions{m_addAction, m_locateAction, m_showAction, separator,
-                                   m_removeAction};
+    const QList<QAction *> actions{m_addAction,     m_locateAction, m_showAction,   separator,
+                                   m_removeAction, fileSeparator,  m_trashAction, m_deleteAction};
     m_list->addActions(actions);
     m_list->setContextMenuPolicy(Qt::ActionsContextMenu);
     m_grid->addActions(actions);
@@ -1157,10 +1177,13 @@ void MediaPoolPanel::rebuild()
 void MediaPoolPanel::updateActions()
 {
     const QStringList paths = selectedPaths();
-    bool anyPresent = false, anyInUse = false;
+    bool anyPresent = false, anyInUse = false, anyMissing = false;
     for (const QString &path : paths) {
-        if (const MediaItem *m = m_pool->item(path); m && !m->missing)
+        const MediaItem *m = m_pool->item(path);
+        if (m && !m->missing)
             anyPresent = true;
+        if (!m || m->missing)
+            anyMissing = true;
         anyInUse |= m_inUse.contains(path);
     }
     m_addAction->setEnabled(anyPresent);
@@ -1171,6 +1194,22 @@ void MediaPoolPanel::updateActions()
     m_removeAction->setToolTip(anyInUse ? tr("Files used on the timeline can't be removed")
                                         : tr("Remove from the project's media. The files are "
                                              "not deleted."));
+    // A file that's gone can't be removed from the file system, and one the
+    // timeline uses stays.
+    const bool canRemoveFiles = !paths.isEmpty() && !anyInUse && !anyMissing;
+    QString fileReason;
+    if (anyInUse)
+        fileReason = tr("Files used on the timeline can't be removed.");
+    else if (anyMissing)
+        fileReason = tr("Files that aren't on the disk can't be removed.");
+    m_trashAction->setEnabled(canRemoveFiles);
+    m_trashAction->setToolTip(
+        canRemoveFiles ? tr("Move the selected files to the trash, where you can put them back.")
+                       : fileReason);
+    m_deleteAction->setEnabled(canRemoveFiles);
+    m_deleteAction->setToolTip(
+        canRemoveFiles ? tr("Delete the selected files for good. This can't be undone.")
+                       : fileReason);
 }
 
 QSize MediaPoolPanel::thumbnailRequestSize() const

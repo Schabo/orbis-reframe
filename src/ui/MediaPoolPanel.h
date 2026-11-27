@@ -125,9 +125,10 @@ private:
 // marked, missing files flagged. Import buttons; drag a file onto the
 // timeline; double-click or Enter adds it there (a missing file: asks to
 // locate it); right-click: add to timeline, locate a missing file, show in
-// the file manager, remove. The play button on a file's picture, or Space,
-// previews it (MainWindow plays it in the viewport instead of the timeline;
-// setPreview marks it). Ctrl + wheel changes the pictures' size, per view.
+// the file manager, remove from the project or from the file system. The
+// play button on a file's picture, or Space, previews it (MainWindow plays
+// it in the viewport instead of the timeline; setPreview marks it). Ctrl +
+// wheel changes the pictures' size, per view.
 // The cameras' <clip>_backup.wav files are hidden until the header's mic
 // button shows them; a backup file on the timeline always shows.
 // Thumbnails and a 360 clip's recording mode ("8K") come from providers run
@@ -203,6 +204,10 @@ signals:
     void addToTimelineRequested(const QStringList &paths);
     // Locate file… on a missing file.
     void locateRequested(const QString &path);
+    // Remove from file system: move the files of these items to the trash,
+    // or delete them for good. The panel doesn't touch the files itself.
+    void moveToTrashRequested(const QStringList &paths);
+    void deletePermanentlyRequested(const QStringList &paths);
     // Preview this file (its play button, Space), or play / pause it if
     // it's the one previewed.
     void previewRequested(const QString &path);
@@ -241,6 +246,8 @@ private:
     QAction *m_locateAction = nullptr;
     QAction *m_showAction = nullptr;
     QAction *m_removeAction = nullptr;
+    QAction *m_trashAction = nullptr;
+    QAction *m_deleteAction = nullptr;
     ThumbnailProvider m_thumbnailProvider;
     ModeProvider m_modeProvider;
     ViewMode m_viewMode = ViewMode::List;

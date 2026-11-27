@@ -562,6 +562,13 @@ private:
     // (and others found with it) replaces the old path in the pool and on
     // the timeline.
     void locateMedia(const QString &path);
+    // Remove from file system, after asking: the pool items' files go to
+    // the trash, or are deleted for good. A take loses all its files (its
+    // companions and a split recording's parts). An item whose files could
+    // not all be removed stays in the pool, and the warning names them.
+    void moveMediaToTrash(const QStringList &paths);
+    void deleteMediaPermanently(const QStringList &paths);
+    void removeMediaFromDisk(const QStringList &paths, bool toTrash);
     // Files that went missing or came back since the last look (a drive
     // unplugged or plugged in again, a file moved away or back): the Media
     // tab, the timeline, playback, the overlays and the sound follow, and the
