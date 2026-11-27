@@ -454,6 +454,71 @@ void testTimelineStructure()
     CHECK(tl.isEmpty() && lastDuration == 0);
 }
 
+// A block of copied keys lands with the earliest key at the base time and the
+// others at their distance from it, poses and easings included: one edit, one
+// signal. A target within 0.15 s replaces that key and keeps its time.
+void testReframeKeyBlockPaste()
+{
+    Timeline tl;
+    const int a = tl.appendClip("a.insv", 10000, 30.0);
+    int touched = 0;
+    QObject::connect(&tl, &Timeline::clipReframeChanged, &tl, [&](int) { ++touched; });
+
+    ReframeKey first;
+    first.timeMs = 1000;
+    first.pose.yaw = 0.2f;
+    first.pose.fov = 1.1;
+    first.ease = keytrack::Ease::In;
+    ReframeKey second;
+    second.timeMs = 3000;
+    second.pose.yaw = -0.3f;
+    second.pose.fov = 1.4;
+    second.ease = keytrack::Ease::Out;
+    // Out of order: the earliest key sets the base.
+    tl.pasteClipReframeKeys(a, 2500, {second, first});
+    CHECK(touched == 1);
+    {
+        const ReframeTrack &t = tl.clipById(a)->reframe;
+        CHECK(t.keyTimes() == (QList<qint64>{2500, 4500}));
+        const int i = t.keyTimes().indexOf(2500);
+        const int j = t.keyTimes().indexOf(4500);
+        CHECK(i >= 0 && j >= 0);
+        if (i >= 0 && j >= 0)
+            CHECK(std::abs(t.keys()[i].pose.yaw - 0.2f) < 1e-6f &&
+                  std::abs(t.keys()[i].pose.fov - 1.1) < 1e-6 &&
+                  t.keys()[i].ease == keytrack::Ease::In &&
+                  std::abs(t.keys()[j].pose.yaw + 0.3f) < 1e-6f &&
+                  std::abs(t.keys()[j].pose.fov - 1.4) < 1e-6 &&
+                  t.keys()[j].ease == keytrack::Ease::Out);
+    }
+    tl.pasteClipReframeKeys(999, 2500, {first, second}); // unknown id: no signal
+    CHECK(touched == 1);
+    tl.pasteClipReframeKeys(a, 2500, {}); // no keys: no signal
+    CHECK(touched == 1);
+
+    // Targets 100 ms and 0 ms from keys already there: both replace, and the
+    // keys keep their times.
+    ReframeKey nearFirst;
+    nearFirst.timeMs = 1000;
+    nearFirst.pose.yaw = 0.9f;
+    nearFirst.ease = keytrack::Ease::Out;
+    ReframeKey nearSecond;
+    nearSecond.timeMs = 3100;
+    nearSecond.pose.yaw = -0.9f;
+    nearSecond.ease = keytrack::Ease::In;
+    tl.pasteClipReframeKeys(a, 2400, {nearFirst, nearSecond});
+    CHECK(touched == 2);
+    const ReframeTrack &t = tl.clipById(a)->reframe;
+    CHECK(t.count() == 2 && t.keyTimes() == (QList<qint64>{2500, 4500}));
+    const int i = t.keyTimes().indexOf(2500);
+    const int j = t.keyTimes().indexOf(4500);
+    if (i >= 0 && j >= 0)
+        CHECK(std::abs(t.keys()[i].pose.yaw - 0.9f) < 1e-6f &&
+              t.keys()[i].ease == keytrack::Ease::Out &&
+              std::abs(t.keys()[j].pose.yaw + 0.9f) < 1e-6f &&
+              t.keys()[j].ease == keytrack::Ease::In);
+}
+
 void testTimelineSplit()
 {
     Timeline tl;
@@ -922,6 +987,7 @@ int main()
     testTrimRemovesKeys();
     testRemoveKeys();
     testTimelineStructure();
+    testReframeKeyBlockPaste();
     testTimelineSplit();
     testSplitScreen();
     testTimelineDuplicate();
