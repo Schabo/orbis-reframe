@@ -214,6 +214,19 @@ edges through the scene; it is not used.
   account for 2412.80 s, leaving +0.17 s, the same offset every first
   chapter has (§3.1). So a chapter's place in its take is in its own
   telemetry.
+- ✅ On a complete three-chapter take (`GS012266`–`GS032266`, 482.56 +
+  482.56 + 352.60 s) the first `CameraOrientation` `STMP` of each chapter is
+  the one before's plus that one's video length, to the microsecond (a gap
+  of 0.0000 s, twice).
+- The reader opens a take from any of its chapters as one clip of parts
+  (`findChapters`): the next chapters by name, each checked to be the same
+  camera (serial) with the same streams, and placed by that `STMP`; one that
+  starts later leaves a gap on the frame grid, one that starts earlier ends
+  the clip there. A later chapter's `.360` names the first
+  (`clipFileFor`), and the motion is each chapter's own track joined
+  (`JoinImuTracks`). ✅ `camera_test` on `GS012266`: 1317.720 s, the IMU over
+  1317.799 s, strictly ordered; the picture reads on across the first
+  chapter's end (482 520 → 482 560 ms).
 
 ## 6. Global settings
 
@@ -259,7 +272,7 @@ layout, the IMU axes, the lag) checked on it.
 
 | Mode | Our clips | Status |
 |---|---|---|
-| 360 5.6K, 25 fps | `GS012267` (65 s), `GS012268` (58 s), `GS012266` (three chapters, 1317.7 s), `GS062269` (chapter 6 alone); fw `H19.03.02.02.00`, GPS off | enough |
+| 360 5.6K, 25 fps | `GS012267` (65 s), `GS012268` (58 s), `GS012266` (three chapters, 1317.7 s, opened as one clip), `GS062269` (chapter 6 alone); fw `H19.03.02.02.00`, GPS off | enough |
 | 360 5.6K, 30 fps | — | wanted: the same layout and lag? |
 | 360 3K, 60 fps | — | **wanted**: its stream size, `PMOD`, the lag |
 | MAX2, any | — | **wanted**: model name, stream size, `PMOD`, axes |

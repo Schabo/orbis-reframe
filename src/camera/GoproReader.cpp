@@ -10,6 +10,7 @@
 #include "ReaderUtil.h"
 
 #include <orbis-core/gopro/Gpmf.h>
+#include <orbis-core/media/LensDemuxer.h>
 #include <orbis-core/media/StillPicture.h>
 
 extern "C" {
@@ -194,7 +195,149 @@ struct GpmdFile {
         }
         return true;
     }
+    // The camera clock (STMP, microseconds) at the start of the sensor
+    // track's first sample: its CameraOrientation's, whose row 0 is video
+    // frame 0, else its first stream's. False when there is none.
+    bool firstStmp(int64_t& us) {
+        if (gpmd < 0)
+            return false;
+        for (unsigned i = 0; i < fmt->nb_streams; ++i)
+            fmt->streams[i]->discard =
+                static_cast<int>(i) == gpmd ? AVDISCARD_DEFAULT : AVDISCARD_ALL;
+        AVPacket* pkt = av_packet_alloc();
+        if (!pkt)
+            return false;
+        bool found = false;
+        while (!found && av_read_frame(fmt, pkt) >= 0) {
+            if (pkt->stream_index == gpmd && pkt->size > 0) {
+                const orbiscore::GpmfSample s = orbiscore::ParseGpmfSensorSample(pkt->data, pkt->size);
+                for (const orbiscore::GpmfStream& st : s)
+                    if (st.dataTag == "CORI") {
+                        us = st.stmpUs;
+                        found = true;
+                    }
+                if (!found && !s.empty()) {
+                    us = s.front().stmpUs;
+                    found = true;
+                }
+            }
+            av_packet_unref(pkt);
+        }
+        av_packet_free(&pkt);
+        return found;
+    }
 };
+
+// A chapter of a GoPro take: `GS`, the two-digit chapter, the take's
+// four-digit number (GS012266, GS022266, ...).
+struct Chapter {
+    int chapter = 0;
+    std::string take;
+};
+std::optional<Chapter> chapterOf(const fs::path& p) {
+    const std::string s = p.stem().string();
+    if (s.size() != 8 || (s[0] != 'G' && s[0] != 'g') || (s[1] != 'S' && s[1] != 's') ||
+        !std::all_of(s.begin() + 2, s.end(), [](unsigned char c) { return std::isdigit(c); }))
+        return std::nullopt;
+    const int ch = std::stoi(s.substr(2, 2));
+    if (ch < 1)
+        return std::nullopt;
+    return Chapter{ch, s.substr(4)};
+}
+fs::path chapterPath(const fs::path& like, int chapter, const std::string& take) {
+    char name[16];
+    std::snprintf(name, sizeof name, "%.2s%02d%s", like.stem().string().c_str(), chapter,
+                  take.c_str());
+    return like.parent_path() / (name + like.extension().string());
+}
+
+// The serial in the maker note of `path`, "" when it has none.
+std::string serialOf(const std::string& path) {
+    const Bytes head = readHead(path, 65536);
+    const size_t mark = findMaker(head);
+    return mark == std::string::npos ? std::string() : printableBefore(head, mark);
+}
+
+// The chapters after `out`'s own file, as `out.parts` after it: the next
+// chapter numbers of the same take beside it, from the same camera, with the
+// same streams, each placed by the camera's clock (the sensor track's first
+// STMP). Measured on a three-chapter take: each chapter starts exactly where
+// the one before ends (482.5600 s on, its video 482.5600 s long). The first
+// that doesn't follow on ends the clip there; one that starts later (the
+// camera's clock says so) leaves a gap, on the frame grid.
+void findChapters(ClipMetadata& out, const orbiscore::InsvStreamInfo& s0) {
+    const fs::path self(out.path);
+    const auto ch = chapterOf(self);
+    if (!ch)
+        return;
+    int64_t prevStmp = 0;
+    {
+        GpmdFile f;
+        if (!f.open(out.path) || !f.firstStmp(prevStmp))
+            return; // no clock to place the next chapter by
+    }
+    std::error_code ec;
+    for (int c = ch->chapter + 1; c <= 99; ++c) {
+        const fs::path next = chapterPath(self, c, ch->take);
+        if (!fs::exists(next, ec))
+            break;
+        const std::string np = next.string();
+        if (serialOf(np) != out.serial) {
+            std::fprintf(stderr, "[camera] %s is named like the next chapter of %s but isn't "
+                                 "from the same camera; the clip ends before it\n",
+                         np.c_str(), out.path.c_str());
+            break;
+        }
+        orbiscore::LensDemuxer demux;
+        std::string err;
+        if (!demux.open(np, [](const auto*, const auto*, auto*, std::string&) { return true; },
+                        err) ||
+            demux.lensCount() != 2 || demux.lens(0).width != s0.width ||
+            demux.lens(0).height != s0.height || std::abs(demux.lens(0).fps - s0.fps) > 1e-3) {
+            std::fprintf(stderr, "[camera] %s continues %s but its video isn't like it%s%s; the "
+                                 "clip ends before it\n",
+                         np.c_str(), out.path.c_str(), err.empty() ? "" : ": ", err.c_str());
+            break;
+        }
+        const int64_t durUs = demux.lens(0).durationUs;
+        demux.close();
+        int64_t stmp = 0;
+        {
+            GpmdFile f;
+            if (!f.open(np) || !f.firstStmp(stmp)) {
+                std::fprintf(stderr, "[camera] %s has no camera clock to place it by; the clip "
+                                     "ends before it\n",
+                             np.c_str());
+                break;
+            }
+        }
+        const Part& prev = out.parts.back();
+        Part part{np, {{np, 0}, {np, 1}}, prev.startUs + prev.durationUs, durUs, {}};
+        const int64_t onUs = stmp - prevStmp;
+        const int64_t slackUs = 100000;
+        if (onUs < prev.durationUs - slackUs) {
+            std::fprintf(stderr, "[camera] %s starts before %s ends (%.3f s on, not %.3f); the "
+                                 "clip ends before it\n",
+                         np.c_str(), prev.path.c_str(), onUs * 1e-6, prev.durationUs * 1e-6);
+            break;
+        }
+        if (onUs > prev.durationUs + slackUs && s0.fps > 0.0) {
+            part.startUs = prev.startUs +
+                           std::llround(std::round(onUs * 1e-6 * s0.fps) * 1e6 / s0.fps);
+            std::fprintf(stderr, "[camera] %s starts %.3f s after %s, not %.3f: a gap in the "
+                                 "clip\n",
+                         np.c_str(), onUs * 1e-6, prev.path.c_str(), prev.durationUs * 1e-6);
+        }
+        out.parts.push_back(std::move(part));
+        prevStmp = stmp;
+    }
+    if (out.parts.size() > 1) {
+        const Part& last = out.parts.back();
+        out.durationMs = (last.startUs + last.durationUs) / 1000;
+        std::fprintf(stderr, "[camera] %s: a take in %zu chapters, %.3f s\n", out.path.c_str(),
+                     out.parts.size(), static_cast<double>(last.startUs + last.durationUs) * 1e-6);
+    }
+}
 
 // The file beside `path` with the same stem and extension `ext` (either
 // case), "" when there is none.
@@ -501,9 +644,9 @@ CameraReader::Result GoproReader::read(const std::vector<orbiscore::InsvStreamIn
     for (const Lens& l : out.lenses)
         part.lenses.push_back(l.source);
     out.parts = {std::move(part)};
-    // A take split into GS01nnnn.360, GS02nnnn.360, ... files is not joined
-    // yet: the files are linked by the camera clock in their telemetry
-    // (docs/formats/gopro-max.md, *Chapters*). One file, one clip.
+    // A take the camera split into chapters: the chapters after this one,
+    // placed by the camera's clock.
+    findChapters(out, streams[0]);
 
     // The motion: the gyro's rate, measured from the first two sensor
     // samples rather than assumed.
@@ -525,16 +668,20 @@ CameraReader::Result GoproReader::read(const std::vector<orbiscore::InsvStreamIn
     return Result::Read;
 }
 
-std::optional<orbiscore::ImuTrack> GoproReader::readImu(const ClipMetadata& clip) const {
+// One file's motion: its gyro rows with the nearest accelerometer row, in
+// camera body axes, on the file's own clock (frameTimes from its packets),
+// mapped and timed by `mode`, the clip's row (its IMU axes and lag).
+static std::optional<orbiscore::ImuTrack> imuOfFile(const std::string& path,
+                                                    const GoproMode& mode) {
     GpmdFile file;
     std::string err;
-    if (!file.open(clip.path)) {
-        logUnread(clip.path, "motion", "the file can't be opened again to read its telemetry");
+    if (!file.open(path)) {
+        logUnread(path, "motion", "the file can't be opened again to read its telemetry");
         return std::nullopt;
     }
     std::vector<std::pair<int64_t, Bytes>> packets;
     if (!file.samples(packets, err) || packets.size() < 2) {
-        logUnread(clip.path, "motion", err.empty() ? "its sensor track has fewer than two samples"
+        logUnread(path, "motion", err.empty() ? "its sensor track has fewer than two samples"
                                                    : err);
         return std::nullopt;
     }
@@ -544,7 +691,7 @@ std::optional<orbiscore::ImuTrack> GoproReader::readImu(const ClipMetadata& clip
 
     MotionStream gyro, accel;
     if (!gyro.collect(samples, packets, "Gyroscope", "GYRO")) {
-        logUnread(clip.path, "motion", "its sensor track has no usable gyroscope");
+        logUnread(path, "motion", "its sensor track has no usable gyroscope");
         return std::nullopt;
     }
     accel.collect(samples, packets, "Accelerometer", "ACCL");
@@ -616,7 +763,7 @@ std::optional<orbiscore::ImuTrack> GoproReader::readImu(const ClipMetadata& clip
         }
     }
     if (rows.size() < 2) {
-        logUnread(clip.path, "motion", "its gyroscope carries no rows");
+        logUnread(path, "motion", "its gyroscope carries no rows");
         return std::nullopt;
     }
 
@@ -634,7 +781,6 @@ std::optional<orbiscore::ImuTrack> GoproReader::readImu(const ClipMetadata& clip
     // The samples are in camera body axes (MTRX applied above). The map to
     // the stitch's world (+X right, +Y up, -Z forward) isn't in the file: the
     // table's, measured from the picture's own turn.
-    const GoproMode& mode = FindGoproMode(clip.model, clip.lensWidth, clip.lensHeight);
     track.axisMap = mode.imuAxes;
 
     // One frameTimes pair per sensor sample: video time is the packet's PTS
@@ -654,6 +800,30 @@ std::optional<orbiscore::ImuTrack> GoproReader::readImu(const ClipMetadata& clip
     track.offsetSec = track.frameTimes.empty() ? 0.0 : track.frameTimes.front().trackSec;
     track.captureScale = 1.0; // measured: the clocks agree to under 5 ppm
     return track;
+}
+
+std::optional<orbiscore::ImuTrack> GoproReader::readImu(const ClipMetadata& clip) const {
+    const GoproMode& mode = FindGoproMode(clip.model, clip.lensWidth, clip.lensHeight);
+    if (clip.parts.size() <= 1)
+        return imuOfFile(clip.path, mode);
+    // A take in chapters: each chapter's track by its own file, then one.
+    // The chapters run on one camera clock (measured: each starts exactly
+    // where the one before ends), and each keeps its own frame times.
+    std::vector<orbiscore::ImuTrackPart> tracks;
+    for (size_t k = 0; k < clip.parts.size(); ++k) {
+        const Part& part = clip.parts[k];
+        auto track = imuOfFile(part.path, mode);
+        if (!track) {
+            std::fprintf(stderr, "[camera] no motion data in %s, chapter %zu of %s\n",
+                         part.path.c_str(), k + 1, clip.path.c_str());
+            continue;
+        }
+        tracks.push_back({std::move(*track), static_cast<double>(part.startUs) * 1e-6,
+                          static_cast<double>(part.durationUs) * 1e-6});
+    }
+    if (tracks.empty())
+        return std::nullopt;
+    return orbiscore::JoinImuTracks(std::move(tracks));
 }
 
 std::optional<orbiscore::GpsTrack> GoproReader::readGps(const ClipMetadata& clip) const {
@@ -689,15 +859,36 @@ std::optional<Thumbnail> GoproReader::readThumbnail(const std::string& path) con
 
 std::optional<std::string> GoproReader::clipFileFor(const std::string& path) const {
     const fs::path p(path);
-    // The proxy. The .THM preview belongs to the clip too, but a clip
-    // claims only its proxy and its lens files, so ClipFileOf would turn
-    // it away; the media pool reads it through readThumbnail instead.
-    if (lower(p.extension().string()) != ".lrv")
+    const std::string ext = lower(p.extension().string());
+    // The proxy and the cube file; the .THM preview belongs to the clip too,
+    // but a clip claims only its proxy and its lens files, so ClipFileOf
+    // would turn it away; the media pool reads it through readThumbnail.
+    if (ext != ".lrv" && ext != ".360")
         return std::nullopt;
     if (p.stem().string().compare(0, 2, "GS") != 0)
         return std::nullopt;
-    const std::string clip = sibling(p, ".360");
-    return clip.empty() ? (p.parent_path() / (p.stem().string() + ".360")).string() : clip;
+    // A proxy names its own chapter's file: a clip claims only its own
+    // file's proxy (ClipMetadata::proxyPath).
+    if (ext == ".lrv") {
+        const std::string own = sibling(p, ".360");
+        return own.empty() ? (p.parent_path() / (p.stem().string() + ".360")).string() : own;
+    }
+    const fs::path clip = p;
+    // A later chapter belongs to its take's first, when every chapter
+    // between them is there (the first file opens the take, findChapters).
+    if (const auto ch = chapterOf(clip); ch && ch->chapter > 1) {
+        std::error_code ec;
+        fs::path first = clip;
+        for (int c = ch->chapter - 1; c >= 1; --c) {
+            const fs::path before = chapterPath(clip, c, ch->take);
+            if (!fs::exists(before, ec))
+                break;
+            first = before;
+        }
+        if (first != clip && chapterOf(first)->chapter == 1)
+            return first.string();
+    }
+    return std::nullopt;
 }
 
 } // namespace camera

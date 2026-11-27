@@ -84,8 +84,7 @@ export, from one contributor's camera. The camera stitches the picture
 itself, into a cubemap, so the Stitching panel has nothing to set; it is
 stabilized from the camera's gyro and accelerometer. Other modes and the
 MAX2 open untested, with a notice. A take the camera split into chapters
-opens one chapter at a time, its GPS isn't read yet, and its photos don't
-open.
+opens as one clip. Its GPS isn't read yet, and its photos don't open.
 
 **Have another 360 camera?** Support for other Insta360, DJI and GoPro
 cameras is planned, and needs real footage to build on:

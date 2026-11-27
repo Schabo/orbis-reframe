@@ -120,11 +120,10 @@ each is in its document in [`formats/`](formats/README.md).
   cube layout (used when the file doesn't state it in `PMOD`), the IMU axes
   and the picture's lag behind the frame times; a clip without a row opens
   untested. Built for the MAX's 5.6K (formats/gopro-max.md, measured on a
-  contributor's four takes).
+  contributor's four takes), and a take in chapters opens as one clip, the
+  chapters placed by the camera clock their telemetry carries
+  (formats/gopro-max.md, *Chapters*).
   Next, each with the measurement that says it worked:
-  - A take in chapters as one clip: the chapters placed by the camera clock
-    their telemetry carries (formats/gopro-max.md, *Chapters*); measured by
-    reading frames across a chapter's end and the gyro's joins.
   - The seam's parallax: the lenses are ~23 mm apart sideways and ~36 mm
     along the axis, so near objects disagree across the lens boundary; the
     depth-aware seam's idea in the cube's overlap. Measured by the seam

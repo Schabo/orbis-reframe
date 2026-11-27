@@ -1505,6 +1505,67 @@ void testGoproMaxSource(const std::filesystem::path& clip360)
     CHECK(end.rgba.empty());
 }
 
+// A take the camera split into three chapters (GS012266, GS022266,
+// GS032266): one clip of three parts, each placed by the camera's clock, the
+// later chapters naming the first, one motion track across them, and the
+// picture read on across a chapter's end.
+void testGoproChapters(const std::filesystem::path& first)
+{
+    std::string err;
+    const auto clip = camera::ReadClipMetadata(first.string(), &err);
+    CHECK(clip);
+    if (!clip)
+        return;
+    CHECK(clip->parts.size() == 3);
+    if (clip->parts.size() != 3)
+        return;
+    // 12064 frames at 25 fps a chapter, then the last 8815: each starts
+    // where the one before ends.
+    CHECK(clip->parts[0].startUs == 0);
+    CHECK(clip->parts[1].startUs == clip->parts[0].durationUs);
+    CHECK(clip->parts[2].startUs == clip->parts[1].startUs + clip->parts[1].durationUs);
+    CHECK(std::llabs(clip->parts[1].startUs - 482560000) < 1000);
+    CHECK(std::llabs(clip->durationMs - 1317720) <= 1);
+    CHECK(clip->parts[2].lenses.size() == 2 && clip->parts[2].lenses[1].stream == 1);
+
+    // Any chapter names the take's first file; a chapter's proxy its own
+    // chapter (a clip claims only its own file's proxy).
+    const auto at = [&](const char* name) { return (first.parent_path() / name).string(); };
+    CHECK(camera::ClipFileOf(at("GS022266.360")) == first.string());
+    CHECK(camera::ClipFileOf(at("GS032266.360")) == first.string());
+    CHECK(camera::ClipFileOf(at("GS022266.LRV")) == at("GS022266.360"));
+
+    // One motion track over the whole take, strictly in order, its frames
+    // at their clip time through every chapter.
+    const auto imu = camera::ReadClipImu(first.string());
+    CHECK(imu && imu->samples.size() > 1000000);
+    if (imu && !imu->samples.empty()) {
+        bool ordered = true;
+        for (size_t i = 1; i < imu->samples.size(); ++i)
+            ordered = ordered && imu->samples[i].timestamp > imu->samples[i - 1].timestamp;
+        CHECK(ordered);
+        const double spanSec =
+            (imu->samples.back().timestamp - imu->samples.front().timestamp) * 1e-6;
+        std::printf("  GoPro MAX take in 3 chapters: %.3f s, IMU over %.3f s\n",
+                    clip->durationMs / 1000.0, spanSec);
+        CHECK(std::abs(spanSec - clip->durationMs / 1000.0) < 2.0);
+    }
+
+    // The picture across the first chapter's end: the frames either side,
+    // one frame apart, from the two files.
+    stitch::NativeStitchSource src;
+    stitch::PreviewStitchConfig cfg;
+    cfg.width = 512;
+    cfg.height = 256;
+    CHECK(src.Open(first.string(), cfg));
+    CHECK(src.GetInfo().duration_ms == clip->durationMs);
+    CHECK(src.SeekTo(482520));
+    const stitch::Frame a = src.ReadFrame();
+    const stitch::Frame b = src.ReadFrame();
+    CHECK(a.timestamp_ms == 482520 && b.timestamp_ms == 482560);
+    CHECK(!a.rgba.empty() && !b.rgba.empty());
+}
+
 void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::path& dir)
 {
     std::string err;
@@ -1693,6 +1754,18 @@ int main(int argc, char** argv)
             testGoproMax(gopro, dir);
         else
             std::printf("  (GoPro MAX sample clip not here: skipped)\n");
+        std::filesystem::path take;
+        std::error_code ec3;
+        for (std::filesystem::recursive_directory_iterator it(groot, ec3), end; !ec3 && it != end;
+             it.increment(ec3))
+            if (it->path().filename() == "GS012266.360") {
+                take = it->path();
+                break;
+            }
+        if (!take.empty())
+            testGoproChapters(take);
+        else
+            std::printf("  (GoPro MAX three-chapter take not here: skipped)\n");
     }
     if (!g_failures)
         std::filesystem::remove_all(dir);
