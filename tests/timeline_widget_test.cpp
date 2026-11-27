@@ -504,6 +504,61 @@ void testKeyLaneCopy()
     CHECK(copy.count() == 1);
 }
 
+// The clip menu pastes a copied block at the playhead when the playhead is
+// inside that clip. Without a copy, or with the playhead in another clip, the
+// action is not there. The request carries the clicked clip and its source
+// time at the playhead.
+void testKeyLanePasteMenu()
+{
+    Fixture f;
+    TimelineWidget::Clip a, b;
+    a.id = 1;
+    a.label = "a";
+    a.trimOutMs = a.sourceDurationMs = 10000;
+    b.id = 2;
+    b.label = "b";
+    b.trimOutMs = b.sourceDurationMs = 10000;
+    f.w.setClips({a, b});
+
+    QSignalSpy paste(&f.w, &TimelineWidget::keysPasteRequested);
+    const auto menuAt = [&](QPoint at, bool choose) {
+        QString text;
+        QTimer::singleShot(0, [&] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if (!menu)
+                return;
+            QAction *act = menu->findChild<QAction *>(QStringLiteral("keysPasteAction"));
+            if (act)
+                text = act->text();
+            if (act && choose)
+                menu->setActiveAction(act);
+            QTest::keyClick(menu, act && choose ? Qt::Key_Return : Qt::Key_Escape);
+        });
+        QContextMenuEvent e(QContextMenuEvent::Mouse, at, f.w.mapToGlobal(at));
+        QApplication::sendEvent(&f.w, &e);
+        return text;
+    };
+
+    const QPoint aBody(Fixture::x(4000), mainY());
+    f.w.setPlayhead(4000);
+    f.w.setReframeKeysCopied(0);
+    CHECK(menuAt(aBody, false).isEmpty()); // nothing copied
+    f.w.setReframeKeysCopied(2);
+    CHECK(menuAt(aBody, true) == "Paste keyframes (2)");
+    CHECK(paste.count() == 1 && paste.last().at(0).toInt() == 1 &&
+          paste.last().at(1).toLongLong() == 4000);
+
+    // The playhead is in clip b: b gets the action with b's source time.
+    f.w.setPlayhead(12500);
+    CHECK(menuAt(QPoint(Fixture::x(13000), mainY()), true) == "Paste keyframes (2)");
+    CHECK(paste.count() == 2 && paste.last().at(0).toInt() == 2 &&
+          paste.last().at(1).toLongLong() == 2500);
+
+    // The playhead is outside clip a: no action on a.
+    CHECK(menuAt(aBody, false).isEmpty());
+    CHECK(paste.count() == 2);
+}
+
 // An overlay clip's key lane works as a video clip's: a sweep selects its
 // look keys (clamped to it) instead of moving it, Shift adds, Delete and its
 // menu ask for them; picking another clip clears them; its left end still
@@ -1566,6 +1621,7 @@ int main(int argc, char **argv)
     testReframeKeyCopyMenu();
     testKeyLane();
     testKeyLaneCopy();
+    testKeyLanePasteMenu();
     testOverlayKeyLane();
     testMarkDotClick();
     testMarkMenus();
