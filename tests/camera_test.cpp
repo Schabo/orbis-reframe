@@ -1407,7 +1407,7 @@ void testGoproModes()
     CHECK(!camera::LayoutFromPmod({700, 1408, 1376}, 4096, 1344)); // an overlap wider than the face
 }
 
-// The GoPro MAX clip, where the sample tree is there: the camera's identity
+// The GoPro MAX clip, where the sample folder has it: the camera's identity
 // and streams (docs/formats/gopro-max.md), the IMU lined up with the video
 // to the residuals that document measured, the .THM preview, and the .LRV
 // and .THM naming the clip.
@@ -1676,7 +1676,7 @@ int main(int argc, char** argv)
             testDjiAvata360(dji, dir);
         else
             std::printf("  (DJI Avata 360 sample clip not here: skipped)\n");
-        // The GoPro MAX sample tree (docs/formats/gopro-max.md): the clip
+        // The GoPro MAX clips (docs/formats/gopro-max.md): the clip
         // found by name wherever the folder keeps it.
         std::filesystem::path gopro;
         std::error_code ec2;

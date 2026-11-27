@@ -109,30 +109,33 @@ each is in its document in [`formats/`](formats/README.md).
   timing measured against the picture's own rotation on six clips.
   The Osmo 360, 360 II and Air follow when their clips can be measured.
 - **GoPro MAX / MAX2**: stitched in the camera into an equi-angular cubemap
-  over two tracks of 4096×1344, three faces each, so a cubemap picture
-  source behind `IStitchSource` instead of the fisheye stitch. Measured on
-  four MAX takes: the face layout, the seam (a cross-fade over the ~64 px
-  overlap takes the boundary from 7–12× the surrounding image's gradient to
-  0.22–0.37, and what is left is parallax between the two lenses), the gyro
-  at ~800 Hz and the accelerometer at ~200 Hz with the axis map carried in
-  the file as `MTRX`, and the telemetry-to-video alignment (slope 1.000000,
-  gyro rms 0.36 ms against the packet PTS). Split takes place themselves in
-  the take by the camera's own clock, which runs across the whole take. The
-  MAX2's 6.4K layout is unverified. Built so far: the reader (`camera::
-  GoproReader`: streams, telemetry, `.THM` / `.LRV`) and the cubemap
-  picture: the face layout measured against FFmpeg's `gopromax` stitch, as
-  data in the stitch (`StitchGpuParams::eacCube`, the shared shader's
-  `cubeSample`, `orbiscore::EacCubeStitcher` on the CPU), so
-  `NativeStitchSource` opens a MAX clip on every path -- GPU decode and
-  stitch, the fused view, export, the privacy blur. A separate cubemap
-  `IStitchSource` was the plan, and was built first; it was folded in
-  because every GPU path (decode, the fused view, lens frames for the
-  viewport, export, the blur) lives in `NativeStitchSource` and takes the
-  picture through one shader function, so a second source would have had
-  to copy all of it. The gyro's axis map is measured from the picture
-  (formats/gopro-max.md, *Gyro axes*). The picture lags the gyro's frame
-  times by 10 ms, measured and applied. Next: split takes, and the seam's
-  parallax.
+  over two streams, so no lens model: the cube is data in the stitch
+  (`StitchGpuParams::eacCube` and its layout, the shared shader's
+  `cubeSample`, `orbiscore::EacCubeStitcher` on the CPU), and
+  `NativeStitchSource` opens a MAX clip on every path a fisheye clip has.
+  The roadmap planned a cubemap source behind its own `IStitchSource`; it
+  was built first and folded in, because every GPU path (decode, the fused
+  view, the viewport's lens frames, export, the privacy blur) takes the
+  picture through one shader function, which a second source would have
+  had to copy. What differs per model and mode is a row of
+  `camera::GoproReader`'s table: the cube layout (used when the file
+  doesn't state it in `PMOD`), the IMU axes and the picture's lag behind the
+  frame times; a clip without a row opens untested. Built for the MAX's
+  5.6K (formats/gopro-max.md, measured on a contributor's four takes).
+  Next, each with the measurement that says it worked:
+  - A take in chapters as one clip: the chapters placed by the camera clock
+    their telemetry carries (formats/gopro-max.md, *Chapters*); measured by
+    reading frames across a chapter's end and the gyro's joins.
+  - The seam's parallax: the lenses are ~23 mm apart sideways and ~36 mm
+    along the axis, so near objects disagree across the lens boundary; the
+    depth-aware seam's idea in the cube's overlap. Measured by the seam
+    metric at the lens boundary and the face edges, reported apart (only the
+    lens boundary is parallax-limited); the cross-fade's number to beat is
+    the one FFmpeg's stitch leaves on the same frame.
+  - The 3K mode and the MAX2: a row each, from clips (stream size, `PMOD`,
+    the IMU axes and lag measured from the picture as for the 5.6K).
+  - Horizon: `CORI` is the camera's own orientation a frame, a candidate
+    to compare Horizon lock against.
 - **Insta360 Luna**: a flat camera, so the flat-video path; needs the
   10-bit / log handling there, through LUTs.
 - Not planned: the ONE X / ONE R / ONE RS.
@@ -285,7 +288,8 @@ each is in its document in [`formats/`](formats/README.md).
     in the file; the IMU axis map and the sync are measured on its clips.
   - Step 3, once real clips are available: DJI (built for the Avata 360,
     `camera::DjiReader`, *Other cameras*) and GoPro readers -- an
-    in-camera cubemap (`Projection`, built: `StitchGpuParams::eacCube`), an
+    in-camera cubemap (`Projection`; built for the GoPro MAX as data in the
+    stitch, `StitchGpuParams::eacCube`), an
     orientation track for cameras that record one, readout time per mode.
     The orientation track is built, from the Antigravity A1:
     `orbiscore::ImuTrack::orientation`, world up and a fixed horizontal

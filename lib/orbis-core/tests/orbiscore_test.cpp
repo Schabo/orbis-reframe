@@ -3659,10 +3659,10 @@ void testGpsAlignedByAcceleration()
 // count fits in 8 bits and disagree on the gyroscope — which carries 833 rows
 // a sample, and is the stream the whole feature needs. A reader that then
 // validates its payload ends stops walking and reports the gyro once per track
-// instead of once per sample. Measured over the sample tree's 18 blobs: 527
-// tag boundaries land where they should for the naive reading, 829 for this
-// one (docs/formats/gopro-max.md [[telemetry]]). The numbers are GS012267's
-// first sensor sample.
+// instead of once per sample. Measured over 18 sensor-track blobs of the MAX
+// clips: 527 tag boundaries land where they should for the naive reading,
+// 829 for this one (docs/formats/gopro-max.md, *Telemetry*). The numbers are
+// GS012267's first sensor sample.
 namespace {
 
 // Big endian, as GPMF writes its numbers.

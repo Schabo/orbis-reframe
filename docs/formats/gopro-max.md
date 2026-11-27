@@ -1,322 +1,290 @@
-# GoPro MAX / MAX2 — container, streams, telemetry
+# GoPro MAX / MAX2 — `.360`
 
-Status: **measured on GoPro MAX clips** (four takes, five `.360` segments, firmware
-`H19.03.02.02.00`), not yet implemented. The clips are kept outside the repository
-and are not published
-under licence terms still to be confirmed (📖 rule: "ask before adding").
+**Measured on a contributor's MAX clips (2026-11); the app opens them,
+experimentally** (`camera::GoproReader`, `orbiscore::EacCubeStitcher`, the
+stitch shader's `cubeSample`). Markers as in [`README.md`](README.md): ✅ is
+read by that code and checked on our clips (*Modes and sample clips*), all
+from one MAX on firmware `H19.03.02.02.00`; nothing about the MAX2 has met a
+real file yet. Every fact says where it came from; *Sources* lists them.
 
-Markers: ✅ verified against a real file · ⚠️ third-party claim · 📖 third-party
-claim, not yet checked here · ❓ unknown.
+The short version: **the camera stitches.** A `.360` isn't two fisheye
+pictures like the other cameras here: the MAX turns each lens's picture into
+three faces of an **equi-angular cubemap** (EAC) and writes the six faces
+into two HEVC streams. What the app adds is the cube→sphere map, the blend
+across the one lens boundary, and the IMU work.
 
-The short version: **GoPro has already done the stitching.** A `.360` is not a raw
-dual-fisheye recording like the other two cameras here — the camera dewarps each lens
-and writes the result as an **equi-angular cubemap** (EAC): six cube faces, three per
-lens, packed into two HEVC tracks. What a reframe editor has to add is the
-cube→sphere assembly, the blend across the one seam, and the IMU work. The geometry is
-not ours to invent, and `libavcodec` already carries a reference implementation of the
-inverse map (`v360_vulkan`'s `gopromax` input, which is the same map as trek-view's
-`max2sphere`).
+## 1. Files and streams
 
-The one thing worth knowing before reading the rest: **the faces are equi-angular, not
-pinhole.** Treating them as rectilinear gives a sphere that looks plausible and is
-wrong in a way that shows up as a curved horizon and a bad seam. (This note previously
-reported a pinhole fit; that fit was the model's error, not the camera's — see
-[[geometry]](#geometry).)
+- ✅ A take is a `.360` with a `.LRV` proxy and a `.THM` preview beside it,
+  one name (`GS012267.360`): `GS`, two digits for the chapter, four for the
+  take (ffprobe; the files on the card).
+- ✅ The container is QuickTime (`ftyp` `qt  `), written `moov` first, so
+  the track table is at the front. The maker note near the start names the
+  camera (`GoPro Max`), its serial and firmware (ffprobe; the bytes).
+- ✅ Seven streams (ffprobe on all six files):
 
-## Container ✅
+  | index | what |
+  |---|---|
+  | 0 | HEVC Main, **4096×1344**, 8-bit full range: lens A's three faces |
+  | 1 | AAC, stereo, 48 kHz |
+  | 2 | `tmcd` timecode |
+  | 3 | `gpmd`: the sensor telemetry, one GPMF sample a packet (§3) |
+  | 4 | `fdsc`: per-frame records, not decoded |
+  | 5 | HEVC Main, **4096×1344**: lens B's three faces |
+  | 6 | PCM float, 4 channels, 48 kHz (the four microphones) |
 
-`ftyp` is `qt  ` (QuickTime), not MP4, and the file is written as
-`moov → mdat → mdat`: **the metadata sits before the media**, so a reader gets the
-track table without seeking to the end. `free` boxes carry the maker note
-(`GoPro Hero…`-style metadata, here `GoPro Max`).
+  The two video streams **aren't adjacent**: "the first two video streams"
+  is right, "streams 0 and 1" isn't.
+- ✅ The two video streams have the same frame count on every file (ffprobe);
+  the reader pairs them frame by frame. ❓ Nothing in the container promises
+  it.
+- ✅ The `.LRV` holds the **two raw fisheye circles** side by side, H.264
+  1408×704: radius 352 px, centres (352, 352) and (1056, 352), touching,
+  no padding (measured on its frames). Not the cube, so playback doesn't
+  use it (the picture must be the same sphere the same way).
+- ✅ The `.THM` is a 704×352 equirectangular JPEG of the whole sphere; the
+  media pool shows it.
+- 📖 The MAX has GPS (retail spec listings). ✅ None of our files has a GPS
+  stream: no `GPS5`, `GPSF` or `GPSU` in any sample, nor a GPS setting in
+  the global settings (§6). ⚠️ So GPS was off when they were filmed; a
+  camera with GPS on writes `GPS5` even before a fix (GoPro's GPMF
+  documentation, for the HERO5 on).
 
-Seven streams, all in one file:
+## 2. Geometry
 
-| index | codec | what |
-|---|---|---|
-| 0 | HEVC Main, **4096×1344**, yuvj420p (8-bit, full range) | lens A: three cube faces side by side |
-| 5 | HEVC Main, **4096×1344**, yuvj420p | lens B: the other three faces |
-| 1 | AAC-LC, stereo, 48 kHz | audio |
-| 6 | PCM 32-bit float, 4ch, 48 kHz | audio (the camera's 4-mic array) |
-| 2 | `bin_data` GPMF, timescale 1/1000 | **the IMU track** — see [[telemetry]](#telemetry) |
-| 3, 4 | `unknown` GPMF | per-frame records and the global settings block |
-
-Two details that will bite:
-
-- **The two video tracks are not adjacent** (0 and 5), and the audio and telemetry
-  tracks sit between them. Selecting "the first two video streams" gets it wrong. ✅
-- **8-bit, not 10-bit.** The MAX records 8-bit HEVC in every 360 mode, so the
-  `tenbit` path the Insta360 reader uses is never taken here. ✅
-
-The `.LRV` proxy is a different animal: **1408×704 H.264 holding the two raw fisheye
-circles** side by side, radius 352, centres at (352, 352) and (1056, 352). So the proxy
-is the *undistorted* path and the `.360` is the *distorted-then-cubemap* path to the
-same sphere — which makes the proxy a useful independent oracle for checking a stitch,
-and it means `v360=input=dfisheye` is right for the `.LRV` and wrong for the `.360`. ✅
-
-Segmented recording splits a take into `GSnnnnnnN.360` files (the trailing digit is
-the part). Parts are **not** listed in the container: there is no edit list, no
-`chpl`, no link from one file to the next. What does link them is the IMU clock, see
-[[split files]](#split-files). ✅
-
-## Geometry
-
-Each stream is one strip of three cube faces, `side | centre | side`, 4096 = 1376 +
-1344 + 1376 at 5.6K. Axes: x right, y forward (the front lens), z up.
+✅ Each stream is one strip of three cube faces, `SIDE | CENTRE | SIDE`,
+4096 = 1376 + 1344 + 1376. With x right, y forward (lens A), z up:
 
 ```
 stream 0:  LEFT  | FRONT | RIGHT     (FRONT upright; the strip runs on left to right)
 stream 1:  DOWN  | BACK  | TOP       (turned: BACK's right edge meets TOP, its left DOWN)
 ```
 
-✅ measured on `GS012267.360` at 5 s against FFmpeg 9.1's own stitch
-(`v360_vulkan input=gopromax`): for each face of our equirect, every strip region of
-both streams, all eight square symmetries and the face's position in the region were
-tried, and the picture correlated with FFmpeg's at NCC 0.998 (FRONT) / 0.999 (BACK)
-and ≥ 0.9994 for each half of the side faces; the runner-up of each face was ≤ 0.62
-(go_pro_2 `tools/eac_layout_fit.py`). In the face's (u, v) ∈ [-1, 1], u along the
-strip and v down it, with e = atan(component / dominant) · 4/π:
+In a face's (u, v) ∈ [−1, 1], u along the strip and v down it, with
+e = atan(component / dominant) · 4/π:
 FRONT (e_x, −e_z), RIGHT (−e_y, −e_z), LEFT (e_y, −e_z), BACK (e_z, −e_x),
 TOP (e_y, −e_x), DOWN (−e_y, −e_x).
 
-**The centre face** is 1344 px for 90°. **A side face** is 1312 px for 90°, cut in
-half at the lens boundary with a 64 px overlap between the halves: the half nearer the
-centre face at 0–656 of its region, the outer half at 720–1376 (mirrored the same way
-in the right region). Each half runs on into the overlap — its lens's view past the
-boundary — so the stitch cross-fades them there. ✅ (same measurement: each half fits
-at exactly that scale and offset.) In terms of the stream size: centre = H, side =
-(W − H)/2, overlap = 2·(side − centre), side span = side − overlap; only 5.6K is
-measured.
+- ✅ **The centre face** is 1344 px for 90°, square.
+- ✅ **A side face** is 1312 px for 90°, cut in half where the two lenses
+  meet (the plane y = 0), with a **64 px overlap** between the halves: the
+  half nearer the centre face at 0–656 of its 1376 px region, the outer half
+  at 720–1376. Each half runs on into the overlap — its lens's view past the
+  boundary — and the stitch cross-fades them over it.
+- ✅ **Equi-angular**: a pixel's direction is linear in angle across the
+  face (the e above), not in its tangent. A rectilinear reading gives a
+  curved horizon and a bad seam.
+- ✅ **The cube is exactly 90°**: the faces' directions are the six axes.
 
-An earlier version of this document, and the reference it was checked against
-(max2sphere's layout reproduced in go_pro_2 `tools/eac_stitch.py`), had the side faces
-as square 1376 px faces with a 32 px band and a different orientation for each face;
-a stitch built on it put face edges through the scene, which only showed once a real
-frame was looked at next to FFmpeg's.
+*How it was measured*: on `GS012267.360` at 5 s, FFmpeg 9.1's own stitch of
+the same frame (`v360_vulkan`, `input=gopromax`) as the reference, used as
+a black box — its output, not its code. For each face of our equirect,
+every strip region of both streams, all eight symmetries of a square and the
+face's offset and scale in the region were tried, and the one whose picture
+correlates best with FFmpeg's kept: FRONT at NCC 0.998, BACK 0.999, each
+half of each side face ≥ 0.9994, the runner-up of every face ≤ 0.62. The
+side faces' 1312 px span and 64 px overlap are where each half fits. The
+whole frame then matches FFmpeg's at 37.97 dB (MAD 1.10 more than 15° from
+the lens boundary — resampling and colour conversion — and 4.90 within 3° of
+it, where the two cross-fades differ). An earlier layout, max2sphere's
+(square 1376 px side faces, a 32 px band), put face edges through the scene;
+it is not used.
 
-Each face is **equi-angular**: the direction of a pixel is the gnomonic projection of
-its position on the cube face, and the face's half-angle spans 45° at the edge —
-`q = atan(q) · 4/π` in `max2sphere`'s form, i.e. the standard EAC inverse
-(`libavutil`'s `flat`/`eac` pair does the same map). The faces are **not** rectilinear
-crops of a fisheye, and there is no per-face focal length to fit. ✅
+- ✅ **The file states the layout**: the global settings' `PMOD` is
+  `[32, 1408, 1376]` on all six files (§6). ⚠️ Read as half the overlap
+  (32) and a side region (1376), the centre being what the side regions
+  leave of the strip: that is the measured layout, and it's how the reader
+  takes the layout from the file. ❓ `1408` is the centre face plus the
+  overlap, a side region plus half of it, and the `.LRV`'s width alike; one
+  mode can't tell which. The reader doesn't use it.
+- ✅ **The seam.** The cross-fade over the overlap makes the far field
+  continuous: on `GS012267.360` at 5 s the luminance gradient across the
+  boundary is the same as 3–10° away from it (ratio 1.00, ours and FFmpeg's
+  alike), and the hard cut's face edges measure **0.46** on the seam
+  metric (`EacCubeStitcher::SeamRatio`: the median jump across a face
+  boundary over the median of the busiest gradients inside the faces; the
+  wrong layout measured 12–14). Near objects still disagree across the
+  boundary: the lenses are ~22.75 mm apart sideways and ~36.4 mm along the
+  axis (`SHFX` / `SHFZ`, §6), parallax no blend can hide.
 
-The cube is **exact 90°**: the six face directions are the six axis directions, and
-the two lenses are 180° apart (`ANGY = 180.19°` in the calibration, see
-[[calibration]](#calibration)). ✅ (A pinhole model fitted to the same pixels reported
-inter-face angles of 80–96° and a 100° face FOV; those were the wrong model talking.)
+## 3. Telemetry
 
-**The seam.** The two lenses meet in the plane y = 0: through the middle of LEFT,
-RIGHT, TOP and DOWN, where each side face is split into its two halves. The lenses are
-~22.75 mm apart laterally and ~36.4 mm along the optical axis (`SHFX`/`SHFZ`), so near
-objects disagree across that boundary by an amount no blend can hide — that part is
-parallax. The cross-fade over the 64 px overlap makes the far field continuous: on
-`GS012267.360` at 5 s the luminance gradient across the boundary is the same as 3–10°
-away from it (ratio 1.00, ours and FFmpeg's alike), and the face edges of the hard cut
-measure 0.46 on the seam metric (median jump across a face boundary over the median
-busy gradient; the wrong layout measured 12–14). ✅ The seam numbers in earlier notes
-(7–12 hard cut, 0.22–0.37 blended) were measured on the wrong layout and don't stand.
+- 📖 GPMF is a big-endian KLV tree: a FourCC, a type character, a one-byte
+  structure size, a two-byte repeat count, the payload padded to 4 bytes
+  (GoPro's GPMF documentation). ✅ Read that way the walk lands every tag's
+  end on the next one; the reading that takes the size as two little-endian
+  bytes agrees only while the count fits in a byte, and loses the gyroscope
+  (833 rows a sample): over 18 sensor-track blobs it lands 527 tag ends to
+  this reading's 829 (`orbiscore::WalkGpmf`, `orbis-core/gopro/Gpmf.h`).
+- ✅ A structure's declared size is the whole track's, not the sample's (a
+  10 KB sample declares a 76 KB `DEVC`): the parser clamps it.
+- ✅ One GPMF sample a `gpmd` packet, ~1.04 s each (63 for `GS012267.360`),
+  each with fifteen streams by `STNM`: Accelerometer, Gyroscope,
+  Magnetometer, CameraOrientation, ImageOrientation, Gravity Vector,
+  DisparityMatrix, Sensor ISO, Exposure time, White Balance RGB gains and
+  temperature, Image uniformity, AGC audio level, Microphone Wet, Wind
+  Processing (our parse of all six files).
+- ✅ The motion streams, measured on every file:
 
-## Telemetry — GPMF
+  | stream | rate | `SCAL` | unit |
+  |---|---|---|---|
+  | Gyroscope (`GYRO`) | 801.6 Hz (median, §3.1) | 939 | rad/s = raw / 939 |
+  | Accelerometer (`ACCL`) | ~200 Hz | 417 | m/s² = raw / 417 |
 
-The IMU track is GoPro's GPMF: a big-endian KLV tree. The framing is worth stating
-exactly, because the obvious reading is wrong for the high-rate streams:
+  A resting camera reads 9.94 m/s², so the unit is m/s² and the reader
+  divides by g. 📖 `SCAL` is the divisor, `SIUN` the unit, `STNM` the name
+  (GoPro's GPMF documentation). ✅ Gyro in rad/s against the camera's own
+  `CORI` attitude: median ratio 0.995.
+- ✅ Both carry `MTRX = [0,−1,0, 1,0,0, 0,0,1]`, the sensor's axes in the
+  camera body, and `ORIN` / `ORIO` say the same in letters; the reader
+  applies `MTRX`. ❓ GoPro's documentation doesn't list `MTRX`, `ORIN` or
+  `ORIO`; their reading here is that applying `MTRX` makes the gyro agree
+  with the picture (§4).
+- 📖 `CORI` is the camera's orientation since the start, `IORI` the image's
+  relative to the camera body, both quaternions a frame; `GRAV` gravity;
+  `DISP` a 1-D depth map of what both lenses see (GoPro's documentation,
+  for the MAX). ✅ `IORI` is the identity on every frame of every file (0.000°
+  at most) while `CORI` turns up to 180°: see §7.
 
-```
-tag(4) | type(1) | bytes_per_sample(1) | count(u16 BE) | payload (padded to 4)
-```
+### 3.1 Timing
 
-The `count` is 16-bit and its **high byte shares the field a naive reader calls
-`size`** (u16 LE). The two readings agree whenever the count fits in 8 bits, which is
-most tags — and disagree exactly where it matters. Measured over the sample tree's 18
-extracted blobs: the `size:u16le × repeat:u8` reading lands each tag's end on the next
-tag **527** times, this reading **829** times, with the same failure count. The
-difference is the gyroscope: at 833 rows per sample the naive reading mis-sizes the
-payload, and a parser that validates payload ends then stops walking and reports the
-gyro as present once instead of 63 times. ✅
+- ✅ Each stream carries `STMP`, the camera clock's time of its first row
+  (µs), and `TSMP`, its rows so far. 📖 `TSMP` is the count since recording
+  started (GoPro's documentation; it lists `STMP` for the Fusion only).
+  ✅ A row's time runs forward from `STMP`: t(row n) = STMP + n / rate.
+  Read backwards (`STMP − (TSMP − n) / rate`) every join of a clip is out of
+  order; read forwards each chunk's rows end ~1 ms before the next `STMP`.
+- ✅ The rate is the **median** of the chunks' ΔTSMP / ΔSTMP: the camera
+  stops mid-sample at a clip's end (the last gyro chunk of `GS012267.360`
+  has 128 rows against a full ~1.04 s span), which drags a first-to-last fit
+  to 790.6 Hz where the median gives 801.6.
+- ✅ The camera clock and the video clock are one clock. `STMP` against the
+  same sample's packet time, a straight-line fit:
 
-Each GPMF sample is one packet of the `bin_data` track (63 packets for a 64.56 s clip,
-one per ~1.04 s), and each sample carries **eleven** streams: `Accelerometer`,
-`Gyroscope`, `Magnetometer`, `CameraOrientation`, `ImageOrientation`, `Sensor ISO`,
-`Shutter`, `WB RG gains`, `WB Kelvin`, `Image uniformity`, plus per-frame exposure.
-The two that matter here, measured: ✅
+  | clip | slope | video 0 at | gyro residual | accel residual |
+  |---|---|---|---|---|
+  | GS012267 (64 s) | 1.000000 | +171.5 ms | max 0.61, rms 0.36 ms | max 2.58, rms 1.45 ms |
+  | GS012268 (58 s) | 0.999999 | +171.7 ms | max 0.62, rms 0.36 ms | max 2.60, rms 1.45 ms |
+  | GS022266 (482 s) | 1.000000 | +171.4 ms | max 0.63, rms 0.36 ms | max 2.58, rms 1.44 ms |
+  | GS062269 (chapter 6) | 1.000000 | +2412.97 s | max 0.62, rms 0.36 ms | max 2.46, rms 1.44 ms |
 
-| stream | rate | `SCAL` | units | notes |
-|---|---|---|---|---|
-| `Gyroscope` | **~800 Hz** (790–801 across clips) | 939 | rad/s = raw / 939 | |
-| `Accelerometer` | **~200 Hz** (197–200) | 417 | m/s² = raw / 417 | a resting camera measures 9.94 m/s², so 1.013 g — the unit is m/s², and `ImuSample::accel` wants g |
+  The reader therefore gives `ImuTrack` one `frameTimes` pair a sample (the
+  packet's time, that sample's gyro `STMP`), exact by construction, and
+  `captureScale` 1. `camera_test` checks slope and residuals on
+  `GS012267.360`.
 
-Both carry `MTRX = [0,-1,0, 1,0,0, 0,0,1]` — the sensor axes expressed in the camera
-body, as a real matrix rather than a guess. `ORIN`/`ORIO` (`XzY`/`ZXY`) and `SIUN`
-(`rad/s`, `m/s²`) say the same thing in words. **Use `MTRX` for the axis map** rather
-than a hard-coded string: it is the file telling us, and it is per-stream. ✅
+## 4. Gyro axes and picture lag
 
-### Gyro axes
+- ✅ **Axes**: body → the stitch's world is `-y,x,z`
+  (`orbiscore::ImuTrack::axisMap`; sphere x right, y forward, z up ← body
+  −y, −z, x). Not in the file. *Measured*: FFmpeg's equirect of frames k
+  and k + 1 (oriented as ours, §2); frame k turned by the gyro's turn over
+  the frame under each of the 24 proper signed permutations; each scored by
+  how much of the photometric change to frame k + 1 it explains. One map
+  wins on both clips tried: 30.5 % explained on `GS012267.360` (runner-up
+  3.4 %), 32.5 % on `GS012268.360` (runner-up 9.7 %); the X5's `z,-x,-y`
+  explains none. In the editor's stabilizer (`tools/residual_stab`,
+  `GS012267.360` 0–15 s, forward view): Direction lock leaves 0.54°/frame
+  against 1.09 unstabilized (`z,-x,-y`: 1.12, worse than nothing); Horizon
+  lock's up stays within 1.6° roll / 0.7° pitch of gravity.
+- ✅ **Lag**: the picture's motion lines up with the gyro **10 ms** after
+  the frame times. *Measured* the same two ways: the frame-to-frame fit
+  scores best at +10 ms (10.40 / 9.89 / 10.43 at 0 / +10 / +20 ms on
+  `GS012267.360`), and Direction lock leaves 0.618 / 0.554 / **0.537** /
+  0.571 / 0.627°/frame at 0 / +5 / +10 / +15 / +20 ms there, 0.587 → 0.562
+  at 0 → +10 ms on `GS012268.360`. ⚠️ Most likely the sensor's middle row
+  read that long after the frame's time (a rolling shutter).
+- Both are in the reader's table for the MAX's 5.6K (`camera::GoproMode`).
+  A model or mode without a row opens with them, marked untested.
 
-`MTRX` takes the sensor to the camera body; the body to the stitched sphere is not in
-the file. Measured from the picture (go_pro_2 `tools/gyro_axes_fit.py`): FFmpeg's
-equirect of frames k and k + 1 (the same orientation as ours, see
-[[geometry]](#geometry)), frame k turned by the gyro's turn over the frame under each of
-the 24 proper signed permutations, scored by how much of the photometric change to
-frame k + 1 it explains. One map wins on both clips tried: **sphere (x right, y
-forward, z up) ← body (−y, −z, x)**, i.e. `-y,x,z` in the stabilizer's world (+X right,
-+Y up, −Z forward) — 30.5 % explained on `GS012267.360` (runner-up 3.4 %) and 32.5 % on
-`GS012268.360` (runner-up 9.7 %); the X5's `z,-x,-y`, used before, explains none. Gain
-0.9–1.0. ✅ In the editor's stabilizer (`tools/residual_stab`, `GS012267.360` 0–15 s):
-forward-view motion left, Direction lock 0.62°/frame against 1.09 unstabilized
-(`z,-x,-y`: 1.12, worse than nothing); the default mode 0.86; Horizon lock's up within
-1.6° roll / 0.7° pitch of gravity.
+## 5. Chapters
 
-The picture's turn fits best with the gyro ~10 ms later than the frame's time (both
-clips; 0, +10, +20 ms scored 10.40 / 9.89 / 10.43 on the first). In the stabilizer,
-Direction lock leaves 0.618 / 0.554 / **0.537** / 0.571 / 0.627 deg/frame at 0 / +5 /
-+10 / +15 / +20 ms on `GS012267.360`, and 0.587 → 0.562 at 0 → +10 ms on
-`GS012268.360`. ✅ *Applied:* the reader's frame times run 10 ms later on the gyro's
-clock. ⚠️ Most likely the sensor's middle row read that long after the frame's time
-(a rolling shutter), not a clock offset; a per-mode readout would say, and the
-in-camera cube leaves no per-row correction to apply.
+- ✅ A long take is split into chapters, `GS01nnnn.360`, `GS02nnnn.360`, …
+  (the take's four digits the same). The container doesn't link them: no
+  edit list, no chapter list, nothing naming the next file.
+- ✅ The camera clock runs on across a take: on chapter 6 of a take,
+  `STMP` at video 0 is +2412.97 s, and five 482.56 s chapters before it
+  account for 2412.80 s, leaving +0.17 s, the same offset every first
+  chapter has (§3.1). So a chapter's place in its take is in its own
+  telemetry.
 
-`CameraOrientation` at ~25 Hz is GoPro's own per-frame estimate of where the camera
-is pointing. ❓ its convention and accuracy are unknown, but it is the natural thing
-to compare a horizon lock against, and it is free.
+## 6. Global settings
 
-### Timing — the alignment is measurable, and it is good
+The global settings are one GPMF block in `moov/udta/GPMF` ✅ (our parse;
+the reader reads `PMOD` from it). On all six files, the same but for
+nothing that matters here:
 
-Each stream carries `STMP` (the time of its **first** row, microseconds on the
-camera's clock) and `TSMP` (that stream's rows **so far**, cumulative). So a row's
-time runs forward from `STMP`:
+- ✅ `PMOD = [32, 1408, 1376]` (§2). ❓ Not in GoPro's documentation.
+- ✅ `PRJT = "EACO"` in the `.360`, `"FSFB"` in the `.LRV`: the cube and
+  the two fisheyes. 📖 GoPro's documentation: "Lens Projection", "GPRO" or
+  "EACO" for 360 modes (it doesn't list `FSFB`).
+- ✅ `EISE = "N"`, `EISA = "N/A"`. 📖 `EISE` is electronic stabilization,
+  N off, Y on; `EISA` which kind was applied (GoPro's documentation).
+- ✅ `SROT = 20.74`. 📖 The sensor's read-out time in ms (GoPro's
+  documentation). ❓ Not used yet: the camera made the cube from the
+  rolling-shutter picture, so there's no per-row correction left to apply.
+- ✅ `ZFOV = 0`, `RATE = "2_1SEC"`. ❓ What they mean on the MAX.
+- ✅ The lens calibration, the same on every file: `KLNS` (5 terms a
+  lens), `CTRX` / `CTRY`, `MFOV = 100`, `SFTR`, the lens pose `SHFX =
+  22.75`, `SHFY = −0.13`, `SHFZ = −36.43`, `ANGX = 0.05`, `ANGY = 180.19`,
+  `ANGZ = −0.97`, `CALW` / `CALH = 4056 × 3040`. ⚠️ Millimetres and degrees,
+  and the lenses before the camera made the cube (the `.LRV`'s picture);
+  the `.360` needs none of it. ❓ None of these is in GoPro's documentation.
 
-```
-t(row n) = STMP + n / rate        rate = median of the per-chunk ΔTSMP / ΔSTMP
-```
+## 7. Stabilization in the camera
 
-(The rows run *forward* from `STMP`, measured: that placement keeps every join
-strictly increasing with a ~1 ms margin, while the backward reading `STMP −
-(TSMP − n) / rate` puts all 62 joins of a 64 s clip out of order. And the rate is
-the per-chunk **median**: the camera stops mid-sample at the end of a clip — the
-last gyro chunk carries 128 rows against a full ~1.04 s STMP span — which drags a
-global first-to-last fit down to 790.6 Hz where the median gives 801.6. A chunk's
-row count can also differ from its `TSMP` delta by 1, so nothing should derive
-timing from chunk spans.)
+✅ **The camera doesn't stabilize the 360 picture on our clips.** `EISE` is
+`N` on every file (§6), and `IORI` — the image's orientation relative to
+the camera body — is the identity on every frame (0.000° at most), while
+`CORI`, the camera's own, turns by up to 180°. The picture moves with the
+camera, and the gyro explains its motion (§4). 📖 GoPro sells the MAX with
+"Max HyperSmooth" and Horizon Leveling (its product pages): for its
+single-lens HERO mode and the reframed export, as far as these files show.
+❓ A clip filmed with HyperSmooth on in a 360 mode, if the camera offers it,
+would say whether `EISE` / `IORI` change.
 
-and the camera clock is lined up with the video by fitting `STMP` against the packet
-PTS of the same sample. Measured on four clips, including an 8-minute part with 464
-samples (`tools/imu_align.py` in the sample tree): ✅
+## Modes and sample clips
 
-| clip | slope | offset (video 0 in camera time) | gyro residual | accel residual |
-|---|---|---|---|---|
-| GS012267 (64 s) | 1.000000 | +171.5 ms | max 0.61 ms, rms 0.36 ms | max 2.58 ms, rms 1.45 ms |
-| GS012268 (58 s) | 0.999999 | +171.7 ms | max 0.62 ms, rms 0.36 ms | max 2.60 ms, rms 1.45 ms |
-| GS022266 (482 s) | 1.000000 | +171.4 ms | max 0.63 ms, rms 0.36 ms | max 2.58 ms, rms 1.44 ms |
-| GS062269 (part 6) | 1.000000 | +2412.97 s | max 0.62 ms, rms 0.36 ms | max 2.46 ms, rms 1.44 ms |
+📖 360 video at 5.6K30 and 3K60 (GoPro's MAX comparison chart). ✅ Our
+clips are 5.6K at 25 fps; ⚠️ the camera's 50 Hz setting, as GoPros offer.
+**Enough** means examined here and what the reader keeps per mode (the
+layout, the IMU axes, the lag) checked on it.
 
-Read that table as: **the camera clock and the video clock are the same clock** (slope
-1.000000, under 5 ppm over eight minutes — no `clockRate` correction needed), the gyro
-aligns to well under a millisecond, and the offset is a constant ~171.5 ms. The
-accelerator's residual is ~1.4 ms because its own sample boundaries are coarser, not
-because the fit is bad.
+| Mode | Our clips | Status |
+|---|---|---|
+| 360 5.6K, 25 fps | `GS012267` (65 s), `GS012268` (58 s), `GS012266` (three chapters, 1317.7 s), `GS062269` (chapter 6 alone); fw `H19.03.02.02.00`, GPS off | enough |
+| 360 5.6K, 30 fps | — | wanted: the same layout and lag? |
+| 360 3K, 60 fps | — | **wanted**: its stream size, `PMOD`, the lag |
+| MAX2, any | — | **wanted**: model name, stream size, `PMOD`, axes |
 
-The right way to hand this to `ImuTrack` is **not** one global offset: emit
-`frameTimes` with one entry per GPMF sample (one per ~1.04 s), each pair being exact by
-construction, and let `timeToFrame` interpolate between them. That uses the existing
-model as designed and leaves nothing to the fit.
+## Open questions
 
-### Split files
+- ❓ `PMOD[1]` (§2), and whether `PMOD` changes with the mode (a 3K clip
+  would say).
+- ❓ `fdsc`, the per-frame record track: not decoded.
+- ❓ `SROT`'s use, `ZFOV`, `RATE`, and what `CORI`'s convention is.
+- ❓ The MAX2: nothing here has met one of its files.
+- ❓ Whether the two video streams are guaranteed frame-locked.
 
-The camera clock runs continuously across a segmented take, and that is the link the
-container does not provide. On part 6 of a take, `STMP` at video 0 is **+2412.97 s**,
-and the five missing parts of 482.56 s each account for 2412.80 s — leaving +0.17 s,
-which is the same constant offset every first part has. ✅ So a part's position in its
-take is recoverable from its own telemetry, to ~0.2 s, without the file naming it and
-without the file names. That is exactly `Part::startUs` / `JoinImuTracks`' "the parts
-run on one device clock", and here the clock is in the file.
+## Sources
 
-## Calibration
-
-The global-settings GPMF block (the `unknown` track at index 3/4, and `udta/GPMF`)
-carries the per-camera lens calibration, and it is **constant across every clip from
-this camera** — so no profile database and no extraction from the desktop app is
-needed. ✅ Measured: `KLNS` (a 5-term radial polynomial per lens), `CTRX`/`CTRY`
-(principal-point offsets), `MFOV = 100`, `SFTR`, and the lens pose `SHFX = 22.75`,
-`SHFY = -0.13`, `SHFZ = -36.43`, `ANGX = 0.05`, `ANGY = 180.19`, `ANGZ = -0.97`
-millimetres/degrees, `CALW/CALH = 4056×3040`.
-
-These are the fisheye-domain calibration of the *lenses*, which is what the `.LRV`
-path needs and what a parallax warp across the seam needs. The `.360` EAC path needs
-none of it: the cube geometry is fixed by the projection.
-
-`PMOD = [32, 1408, 1376]` looks like the stitch geometry — 1376 is the side region's
-width in the strip (measured, see [[geometry]](#geometry)), 32 is side region − centre
-face (half the 64 px overlap), and 1408 = 1376 + 32. ❓ unconfirmed which field is which, but it is the file stating the numbers
-FFmpeg currently infers from the frame size, and worth a look before hard-wiring any
-of them. `PRJT` is `'FSFB'` on two of these clips and `'EACO'` on two others — so the
-claim that it is "`GPRO` or `EACO`" in 360 modes is incomplete, and what the values
-mean is ❓ (GoPro's tag dictionary is behind a 403 from here).
-
-## Plan
-
-Each step names the measurement that says it worked, and none of them are committed to
-until that measurement is written down. Steps 1–2 are the whole of "open a `.360`";
-step 3 is where the project's own machinery takes over.
-
-**1. `GoproReader` — container and pictures.** Two HEVC tracks (0 and 5) decoded in
-parallel, each split into three 1344×1344 faces, assembled into a cube frame with the
-64 px margins overlapped for blending. Deliverable: `ClipMetadata` with the right
-streams, and frames that match a reference. Measurement: **the assembled sphere
-matches `max2sphere`'s output and `v360_vulkan input=gopromax` on the same frame** —
-all three are independent, and agreement between them is the strongest check available
-without GoPro's own app. Cost: the decode is 2× 4096×1344 HEVC, which is the same
-pixel rate as one 8192×1344 frame, so the existing 8K path is the budget.
-
-**2. `GoproReader::readImu()` — the telemetry.** Parse the `bin_data` track with the
-framing above; emit `ImuSample`s at the measured rates, `accel` in g, `gyro` in rad/s;
-fill `axisMap` from `MTRX`; fill `frameTimes` from the per-sample `STMP`↔PTS pairs.
-Measurement: **the residuals in the table above, reproduced by the C++ reader and
-asserted in a test** — gyro rms under 1 ms against the packet PTS, slope within 10 ppm
-of 1.0. This is the step that decides whether the IMU work is trustworthy, and it is
-already measured here in Python.
-
-**3. The cube→sphere stitch behind `IStitchSource`.** The roadmap's shape is right: a
-cubemap picture source, not a new lens model. The per-pixel map is the EAC inverse
-(textbook, and `libavutil` has the forward one), and the seam is a cross-fade over the
-overlap with the parallax warp from `SHF*` as the quality step. Measurement: **the seam
-metric** — hard cut 7–12, cross-fade 0.22–0.37, and the number to beat is whatever
-FFmpeg's blend leaves on the same frame. Report same-lens and cross-lens boundaries
-separately: only the cross-lens one is parallax-limited, and a single blended number
-hides which one got worse.
-
-*Built:* the map in `orbiscore::EacCubeStitcher` (CPU) and in the GPU stitch's
-shared shader (`cubeSample` in `fisheye_stitch_common.glsl`, switched on by
-`StitchGpuParams::eacCube`), so `stitch::NativeStitchSource` opens a clip whose reader
-says `Projection::EquiAngularCube` on every path a fisheye clip has: Vulkan video
-decode, the GPU equirect, the fused view (playback, export), the viewport's lens
-frames, the privacy blur; the CPU stitch where there's no GPU (no privacy blur there).
-The seam machinery stands down: there is no lens model to measure. Measured on
-`GS012267.360` @ 5 s: the GPU and CPU stitches agree at PSNR 50.41 dB, and against
-FFmpeg's stitch at 37.97 dB (MAD 1.10 more than 15° from the lens boundary,
-resampling and colour conversion; 4.90 within 3° of it, the two cross-fades
-differing). `tools/playback_bench` on an RTX 5070: decode 3.3 ms a pair, a 5376-wide
-equirect 20.9 ms, the fused 1920 view 5.2 ms, an exact seek 51 ms — real time at
-25 fps with room to spare. `tools/view_compare`: the fused view matches the equirect
-path at 56–61 dB. `reframe_export` writes a 10 s 1080p HEVC (NVENC) from it.
-
-**4. Reframe and export.** Nothing GoPro-specific: the sphere is a sphere, and the
-existing `Viewer`/`ExportPipeline` take it from there. The one thing to check is the
-horizon: `SROT = 20.74` (constant across clips) is presumably the camera's mount
-rotation and `CameraOrientation` is GoPro's own pose estimate — both are candidates for
-what the desktop app uses, and neither is understood yet. ❓
-
-## What we still don't know
-
-- ❓ `PMOD`'s three fields: which is the blend, which is the face width, and whether
-  they change with the recording mode. Check against a 3K clip.
-- ❓ `PRJT`'s values and what distinguishes `FSFB` from `EACO` on otherwise identical
-  clips from the same camera.
-- ❓ The per-frame `GP` record track (9363 fixed-size records of 1456 B for a 1614-frame
-  clip, ids `0x0004/0x001b/0x0300/0x0310`) — exposure/shutter/ISO, presumably, for
-  rolling-shutter work. Not decoded.
-- ❓ `SROT`, `ZFOV`, `CameraOrientation`'s convention.
-- ❓ MAX2. Nothing here has been seen on a MAX2 file; the mode table and the face
-  layout for MAX2's 6.4K are 📖 from FFmpeg's filter, and its frame size is unverified.
-- ❓ Whether the `.360`'s two video tracks are guaranteed to be frame-locked. They
-  decode to the same frame count here, and `max2sphere` assumes it, but nothing in the
-  container promises it.
+- Our MAX clips (*Modes and sample clips*): streams and frame counts by
+  `ffprobe`; the maker note and boxes by their bytes; the telemetry and
+  global settings parsed as GPMF; the layout fitted against FFmpeg's
+  stitch, the axes and lag against the picture's own turn, as §2 and §4
+  describe.
+- GoPro, GPMF documentation (the framing, `TSMP`, `SCAL`, `SIUN`, `STNM`,
+  `CORI`, `IORI`, `GRAV`, `DISP`, `EISE`, `EISA`, `PRJT`, `SROT`, `GPS5`):
+  <https://github.com/gopro/gpmf-parser/blob/main/README.md>
+- GoPro, MAX / HERO13 Black / MAX camera comparison (360 modes 5.6K30,
+  3K60):
+  <https://fotoforma.pl/userdata/public/assets/Kamil/GoPro/GoPro%20MAX%20360/MAX_H13Black_MAX_CameraComparison_en-US_REVA.pdf>
+- GoPro, MAX product page (Max HyperSmooth, Horizon Leveling):
+  <https://gopro.com/en/gp/shop/cameras/buy/max/CHDHZ-203-master.html>
+- Retail spec listings saying the MAX has GPS:
+  <https://www.currys.co.uk/products/gopro-max-360-5.6k-action-camera-10280301.html>,
+  <https://m.cdw.com/product/gopro-max-action-camera/5861939>
+- FFmpeg 9.1, `v360_vulkan` with `input=gopromax`, used as a black-box
+  reference picture for §2: <https://ffmpeg.org/ffmpeg-filters.html#v360>
+- trek-view's max2sphere, whose layout was tried first and doesn't match
+  (§2): <https://github.com/trek-view/max2sphere>

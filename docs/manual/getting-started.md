@@ -71,9 +71,9 @@ A GoPro MAX `.360` filmed at 5.6K opens, plays and exports
 (experimental). The camera stitched it already, so the Stitching panel's
 settings don't apply. Stabilization uses its gyro. Other GoPro 360 cameras
 and modes, such as the MAX2, open like the untested Insta360 models below:
-with the MAX's 5.6K values, and a notice saying so. A take the camera split into several files
-opens one file at a time, and the camera's preview file (`.LRV`) isn't used
-for playback.
+with the MAX's 5.6K values, and a notice saying so. A take the camera split
+into several files opens one file at a time, and the camera's preview file
+(`.LRV`) isn't used for playback.
 
 Other Insta360 models, such as the X4, X4 Air and X3, aren't supported
 yet, and orbis-reframe hasn't been tested with them. Their clips may open,
