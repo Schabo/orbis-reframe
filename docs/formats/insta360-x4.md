@@ -1,10 +1,11 @@
 # Insta360 X4 and X4 Air file format
 
-**Desk research (X4 2026-10-15, X4 Air 2026-11-24), no X4 or X4 Air file
-examined.** From public specs, Insta360's manuals, launch coverage and
-Gyroflow's telemetry-parser, set against what our code assumes, plus the
-log of one X4 Air owner who opened a clip with orbis-reframe 0.10.1 (X4 Air
-below). Written as differences from the X5
+**Desk research (X4 2026-10-15, X4 Air 2026-11-24), and one X4 Air file
+(2026-11-27): no X4 file examined.** From public specs, Insta360's manuals,
+launch coverage and Gyroflow's telemetry-parser, set against what our code
+assumes, plus the log of one X4 Air owner who opened a clip with
+orbis-reframe 0.10.1, and one X4 Air 6K clip of our own (*The X4 Air file
+we have*, below). Written as differences from the X5
 ([`insta360-x5.md`](insta360-x5.md), "X5 §n" below). Markers as in
 [`README.md`](README.md).
 
@@ -33,6 +34,8 @@ cameras are in this document; where they differ, it says which.
   **no I-Log**. Insta360's X-series colour page lists both cameras among
   those without a log mode ("applying a LUT will not produce correct
   results") and the X4 Air's video as 8-bit.
+- ✅ X4 Air: our 6K clip is H.265 Main, **8-bit**, full range, BT.709
+  (ffprobe), as Insta360 says.
 - ❓ Bit depth of the X4. Insta360 doesn't say; one third-party listing
   claims 10-bit. The app's GPU stitch takes 8-bit and 10-bit (see
   [`insta360-x6.md`](insta360-x6.md)).
@@ -40,7 +43,8 @@ cameras are in this document; where they differ, it says which.
   Active Wind Reduction, Stereo, 360 Direction Focus; X4 Air Auto Wind
   Noise Reduction, Voice Focus, Stereo, 360 Audio.
 - ⚠️ Per lens: 3840² at 8K, 2880² at 5.7K, 1920² at 4K (the X5's sizes),
-  and on the X4 Air **3008² at 6K** (6016×3008, the X6's 6K). The app names a
+  and on the X4 Air **3008² at 6K** (6016×3008, the X6's 6K; ✅ two
+  3008² streams in our clip). The app names a
   clip's mode by its lens size, from the model's row in
   `orbiscore::InsvModel`; neither camera has a row, so both get the general
   one, which names 3008² 6K as the X6's row does.
@@ -87,24 +91,46 @@ same chip powers the X4; the X5 adds two imaging chips).
 - 📖 The same `inst` trailer as the X5 (X5 §4): telemetry-parser reads X4,
   X4 Air and X5 trailers with one code path -- an Offsets table, records
   back to back, each closed by its six-byte descriptor.
-- ❓ Which calibration string it carries. The X5 has the 56-token MEI
+- ✅ X4 Air: both calibration strings, as on the X5 (X5 §5.3): `offset_v3`
+  and the 56-token MEI string (telemetry-parser's `offset_v6`), lens type
+  **131** (X5 113, X6 193), calibration frame **15360×7680** (7680² per
+  lens), ξ 2.31, fx ~7093 / 7107. Field 27: src 7680², **dst 7424²**
+  (fields 5 and 6 are 0, as on the X5), so the 6K picture scales the
+  focal length by 3008/7424. The two strings disagree more than on the
+  X5: lens 0's cy is 3831.2 in the 56-token string and 3845.4 in
+  `offset_v3` (X5: within 4 px). Its 13-term block has the thin-prism
+  terms the X5's has, and our reading of that block doesn't match
+  Gyroflow's (X5 §5.3).
+- ❓ X4: which calibration string it carries. The X5 has the 56-token MEI
   string (`offset_v3`, X5 §5.3, field 111/112), which the native stitch
   needs; without it the clip won't open. telemetry-parser also knows
   `offset_v6` (a 13-term lens model, the X6's) and `offset_v8` (a lens that
   focuses, one calibration per AF code); it doesn't say which the X4 Air
   writes. The replaceable lenses make it worth checking.
-- ❓ Lens profiles (X5 §5.4, field 145): the X4 has lens guards; the X4 Air
-  has replaceable lenses instead, and whether its clips carry a profile per
-  lens, the X5's table or none is open.
-- ❓ Whether the IMU is raw counts (`is_raw_gyro`, field 62) with the X5's
-  full-scale ranges (X5 §6.1).
+- ✅ X4 Air lens profiles (X5 §5.4, field 145): our clip carries a table
+  in the X5's layout -- `bare` 200°, `ProtectorA`, `ProtectorS`,
+  `ProtectorAS` 195° (one polynomial for all three), `InvisibleDiveWater`
+  and `InvisibleDiveAir` 190° -- and field 68 = 0 (bare). ❓ Whether a
+  swapped lens changes the table or the calibration.
+- ❓ X4 lens profiles: the X4 has lens guards; whether its clips carry the
+  X5's table is open.
+- ✅ X4 Air IMU: ~1007 Hz, read with the X5's layouts; at rest the
+  accelerometer reads 1.00 g on raw x, so the scaling is right whichever
+  layout field 62 picks. Exposure (one sample per frame) and GPS records
+  are there too.
+- ❓ X4: whether the IMU is raw counts (`is_raw_gyro`, field 62) with the
+  X5's full-scale ranges (X5 §6.1).
 - 📖 Track order: telemetry-parser lists the X4, X5, X4 Air, X6 and A1 as
   bodies whose lens-to-track order is stated by
   `pano_record_multi_track_order` (field 80: `TRACK0_STREAM10` reversed,
   `TRACK0_STREAM00` in order), and notes that an X4 writes no `stream_type`
   at all. Our reader takes track 0 as lens 0 on every Insta360 body and
   reads neither field; the X5 and X6 stitch correctly that way. ❓ Whether
-  the X4 and X4 Air state the same order as the X5.
+  the X4 and X4 Air state the same order as the X5. Our X4 Air clip
+  stitches nearly right with track 0 as lens 0, but that doesn't settle
+  it: the two lenses' calibrations are so alike that the other order
+  would too, and exchanging the lenses' intrinsics changes the seam error
+  (*The X4 Air file we have*, below).
 
 ## IMU axes
 
@@ -114,6 +140,9 @@ same chip powers the X4; the X5 adds two imaging chips).
 - ❓ X4 Air: telemetry-parser's orientation table has no X4 Air entry, so it
   gets that library's default (`Xyz`) -- an omission, not a measurement.
   The app uses the X5's `z,-x,-y` for it; it must be measured.
+  ⚠️ Our clip agrees on the vertical: gravity on raw x at rest (−1.00 g,
+  the X5's sphere Y ← −raw x), and the turns about the vertical are on raw
+  x. It has almost no pitch or roll, so the other two axes are unchecked.
 
 ## Split recordings (X4 Air)
 
@@ -128,8 +157,46 @@ same chip powers the X4; the X5 adds two imaging chips).
   say. If it is the header only, part 2 needs a decoder of its own rather
   than a refusal.
 - ❓ Nothing in the preview on the owner's machine even with the right GPU;
-  the log shows only the part 2 refusal. Whether a single-file X4 Air clip
-  (`…_039` alone) opens and stitches is the first thing to check.
+  the log shows only the part 2 refusal. ✅ A single-file X4 Air clip opens
+  and stitches: the owner's `…_039` alone, and our own 6K clip (below).
+
+## The X4 Air file we have
+
+`VID_20261127_141150_00_040.insv` + `LRV_…_01_040.lrv` (2026-11-27):
+6K 30, 20.7 s, firmware v1.2.7, bare lenses, H.265 8-bit in both lens
+streams; the `.lrv` is a 1664×832 H.264 proxy. Hand-held on a stick next to
+a building, still for 5 s, then turned about the vertical.
+
+- ✅ It opens on the general row, marked untested, and stitches on the GPU
+  (Vulkan decode, compute stitch) and the CPU; the export works.
+- ⚠️ **The seam is about 1.4° off.** Near content at the seam is doubled
+  (a window on a nearby wall: its edges and bars twice, also *across* the
+  seam, which parallax can't do there). Measured per 5° block of the seam over
+  8 frames, lens 1's picture is shifted against lens 0's all round the
+  seam: along it `1.38°·cos(az)`, across it `1.80°·sin(az)` (az: the
+  azimuth around lens 0's axis), 1.37° RMS after taking out what
+  parallax can do. The camera's own stitched thumbnail (record 2, X5 §4)
+  places lens 1 **1.51°** differently against lens 0 than our stitch, so
+  the camera knows a geometry we don't read.
+- What it isn't (each tried against the seam): the radial models
+  exchanged as on the X5; `offset_v3` instead of the 56-token string; cx
+  and cy transposed or mirrored; field 27. Reading the 13-term block as
+  Gyroflow does (X5 §5.3) takes about a fifth off (1.37 -> 1.09°). The two
+  lenses' intrinsics exchanged removes the shift along the seam but leaves
+  a 1.4° tilt.
+- What fits: the lens centres moved, lens 0 by (−8, +61) and lens 1 by
+  (+3, −12) calibration-frame pixels (~24 and ~5 px in the 3008² picture):
+  the seam then agrees to 0.07° and our stitch matches the thumbnail to
+  0.14°. The seam can't tell a lens-0 centre error from a tilt of the
+  lenses, so this is a description, not the cause; nothing in the file
+  gives these numbers.
+- ⚠️ Against the thumbnail our stitch also makes lens 0's picture 0.59 %
+  too large and lens 1's 0.44 % too small: the X5's sign and size, where
+  the strings carry each lens's radial model in the other's place (X5
+  §5.3). Not yet applied to the X4 Air.
+- ❓ The cause. The next file to look at is an **8K clip from the same
+  camera** (3840², at the calibration's own scale): a clean seam there
+  would put it in how the 6K window maps onto the calibration.
 
 ## Modes and sample clips
 
@@ -164,7 +231,7 @@ are the X5's (X5 §3.4).
 | Mode | Spec | Files | Our clips | Status |
 |---|---|---|---|---|
 | 360 Video 8K | 7680×3840, 30 / 25 / 24; Active HDR up to 8K 30 | `VID_…_00_` `.insv` + `.lrv` | none | **wanted first**: 3840² lenses, the calibration string, the IMU |
-| 360 Video 6K | 6016×3008, 50 / 48 / 30 / 25 / 24 | as above | none | **wanted**: 3008² lenses (the general row names them 6K) |
+| 360 Video 6K | 6016×3008, 50 / 48 / 30 / 25 / 24 | as above | one at 30, bare (above) | **partial**: opens and stitches; the seam is ~1.4° off (above); at 50 wanted |
 | 360 Video 4K | 3840×1920, 50 / 48 / 30 / 25 / 24 (one retailer says 60) | as above | one owner's take at 30, split in two files (log only) | **wanted**: a short one-file clip, and the split take's files |
 | Filters Vivid / Flat | | as above | none | wanted, low |
 | H.264 encoding | | as above | none | **wanted**: one clip in each codec |
@@ -185,7 +252,8 @@ whole folder (`DCIM` and `MISC`), as in "Sample clips wanted"
 ([`README.md`](README.md#sample-clips-wanted)):
 
 1. 8K 30, Standard, hand-held or on a stick, with slow deliberate turns
-   left-right, up-down and a roll.
+   left-right, up-down and a roll. On the X4 Air also the reference for
+   the 6K seam (above): ideally the same scene, at 8K and at 6K.
 2. One clip in each other 360 resolution (X4: 5.7K 60, 4K 100; X4 Air: 6K
    50, 4K 50).
 3. A take just over 30 minutes, both parts (any resolution; 4K fills the
@@ -219,6 +287,9 @@ whole folder (`DCIM` and `MISC`), as in "Sample clips wanted"
   <https://www.dpreview.com/news/7450240546/insta360-x4-air-announcement/>
 - Australian Photography, X4 Air review (sensor, lens, single processor):
   <https://www.australianphotography.com/gear/review-insta360-x4-air>
+- Gyroflow, `src/core/stabilization/distortion_models/insta360_v6.rs`
+  (the 13-term lens model of the 56-token string):
+  <https://github.com/gyroflow/gyroflow>
 - Gyroflow telemetry-parser, `src/insta360/mod.rs` (trailer layouts, IMU
   orientation table) and `src/insta360/rig.rs` (track order, file groups):
   <https://github.com/AdrianEddy/telemetry-parser>

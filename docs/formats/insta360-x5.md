@@ -722,10 +722,22 @@ trailing token `flag`. Each lens block ends in `w h lensType` (`10752 5376
 | 11–14 | `k1..k4` | 0.2297 1.602 −1.242 −3.170 | radial |
 | 15 | reserved | 0 | |
 | 16–17 | `p1 p2` | −0.00145 0.00040 | tangential |
-| 18–21 | `s1..s4` | … | thin-prism |
-| 22–23 | reserved | | |
+| 18–21 | `s1..s4` | … | thin-prism (Gyroflow: not all of them, below) |
+| 22–23 | reserved | | Gyroflow: thin prism at r⁴ (below) |
 | 24–26 | `w h type` | 10752 5376 113 | |
 
+- ⚠️ **Gyroflow reads idx 11–23 otherwise** (its `insta360_v6` model, the
+  13 terms `d0..d12`): radial `1 + d0·r² + d1·r⁴ + d2·r⁶ + d3·r⁸ + d4·r¹⁰`;
+  decentering `px = d5 + d7·r²`, `py = d6 + d8·r²`, with
+  `x += (r²+2x²)·px + 2xy·py` and `y += (r²+2y²)·py + 2xy·px` -- `d5` on
+  the term our `p1` isn't on; thin prism `x += d9·r² + d11·r⁴`,
+  `y += d10·r² + d12·r⁴`. So our `s1..s4` are its `d7..d10`, and idx 22–23
+  ("reserved" above) are its r⁴ thin-prism terms. They aren't zero: 0.0112 /
+  0.0095 (lens 0) and −0.0084 / −0.0244 (lens 1) on `185106`, 0.028 on an
+  X4 Air lens. At the seam's radius, thin prism shifts the picture by one
+  vector, which is the along / across cos-sin pattern below. Not yet
+  checked against the chart; on the X4 Air's seam, Gyroflow's reading
+  takes about a fifth off the error ([`insta360-x4.md`](insta360-x4.md)).
 - The MEI forward model is implemented in `FisheyeProjection.cpp` and
   `fisheye_stitch_common.glsl`: `x = Xs/(Zs+xi)`, then distortion (radial
   k1–k4, tangential p1/p2, thin-prism s1–s4 in the OpenCV-omnidir form), then
