@@ -47,6 +47,10 @@ public:
     // keeps its ease; a new one is linear.
     void upsert(qint64 timeMs, const ReframePose &pose, qint64 snapMs);
 
+    // Put `pose` and `ease` at timeMs, replacing the key within snapMs (which
+    // keeps its time): a keyframe copied from another moment or clip.
+    void setKey(qint64 timeMs, const ReframePose &pose, keytrack::Ease ease, qint64 snapMs);
+
     // Ease of the move from the key at timeMs (within snapMs, else the last
     // one before) to the next. True if it changed (keytrack::setEase).
     bool setEase(qint64 timeMs, qint64 snapMs, keytrack::Ease ease);

@@ -76,6 +76,10 @@ public:
     // keys). Does not emit easeEdited.
     void setEase(bool available, keytrack::Ease ease);
 
+    // The Keyframe row: a key is at the playhead (Copy keyframe is live), a
+    // key was copied (Paste keyframe is live). Does not emit.
+    void setKeyframeActions(bool atKeyframe, bool canPaste);
+
     // The clip's split layout, which names its panes, and the active pane
     // (0-based). Do not emit.
     void setPaneLayout(pane::Layout layout);
@@ -85,6 +89,9 @@ signals:
     void activePaneEdited(int pane);
     void poseEdited(const ReframePose &pose);
     void easeEdited(keytrack::Ease ease);
+    // Copy the keyframe at the playhead / write the copied one there.
+    void copyKeyframeRequested();
+    void pasteKeyframeRequested();
     // The Fit choice of a flat clip changed.
     void fitEdited(bool fill);
     // The button was clicked: start drawing a box around the subject (or,
@@ -100,6 +107,7 @@ private:
     void edited(const std::function<void(ReframePose &)> &change);
     void showPaneRow();
     void updateBodyEnabled();
+    void updateKeyframeActions();
 
     QWidget *m_presetRow = nullptr; // the View buttons
     QDoubleSpinBox *m_yaw = nullptr;
@@ -120,6 +128,11 @@ private:
     ReframePose m_pose; // the pose shown: an edit changes only its own field
     QComboBox *m_ease = nullptr;
     bool m_easeAvailable = false;
+    QWidget *m_keyRow = nullptr; // Copy keyframe / Paste keyframe
+    QPushButton *m_copyKey = nullptr;
+    QPushButton *m_pasteKey = nullptr;
+    bool m_atKeyframe = false;  // a key is at the playhead
+    bool m_canPasteKey = false; // a key was copied
     QPushButton *m_track = nullptr;
     QLabel *m_trackUnavailable = nullptr;
     QString m_trackUnavailableReason;

@@ -347,6 +347,10 @@ public slots:
     // The reframe edits act on the camera of pane `pane` (0 = the clip's
     // own reframe track; ClipItem::paneTrack).
     void upsertClipReframeKey(int clipId, qint64 sourceMs, ReframePose pose, int pane = 0);
+    // Put a copied keyframe (pose and ease) at sourceMs, replacing a key within
+    // 0.15 s of it (the same distance as Delete keyframe) -- one edit, one undo
+    // step. No-op on a flat clip.
+    void pasteClipReframeKey(int clipId, qint64 sourceMs, const ReframeKey &key, int pane = 0);
     void removeClipReframeKeyNear(int clipId, qint64 sourceMs, int pane = 0);
     // Remove the keys at exactly these source times (a selection of them on
     // the timeline) -- one edit, one undo step.
