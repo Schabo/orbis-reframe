@@ -83,6 +83,7 @@
 #include <QTreeWidget>
 
 #include <atomic>
+#include <clocale>
 #include <condition_variable>
 #include <cmath>
 #include <numbers>
@@ -3540,6 +3541,10 @@ int main(int argc, char **argv)
     qputenv("XDG_CACHE_HOME", (home.path() + QStringLiteral("/cache")).toLocal8Bit());
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication app(argc, argv);
+    // As the app does: QApplication applies the user's LC_NUMERIC, and a
+    // decimal comma here would make this test write "0,9" into a LUT the
+    // app parses with '.'.
+    std::setlocale(LC_NUMERIC, "C");
     QApplication::setApplicationName(QStringLiteral("orbis-reframe"));
     theme::apply(app, theme::themes().first());
 
