@@ -8,6 +8,7 @@
 #include <QList>
 #include <QObject>
 #include <QStringList>
+#include <QVector>
 
 #include <cstdint>
 #include <functional>
@@ -351,6 +352,12 @@ public slots:
     // 0.15 s of it (the same distance as Delete keyframe) -- one edit, one undo
     // step. No-op on a flat clip.
     void pasteClipReframeKey(int clipId, qint64 sourceMs, const ReframeKey &key, int pane = 0);
+    // Put copied keyframes (pose and ease) at baseSourceMs plus each key's
+    // distance from the earliest key, replacing a key within 0.15 s of each
+    // target (that key keeps its time) -- one edit, one undo step. No-op on a
+    // flat clip or with no keys.
+    void pasteClipReframeKeys(int clipId, qint64 baseSourceMs, const QVector<ReframeKey> &keys,
+                              int pane = 0);
     void removeClipReframeKeyNear(int clipId, qint64 sourceMs, int pane = 0);
     // Remove the keys at exactly these source times (a selection of them on
     // the timeline) -- one edit, one undo step.

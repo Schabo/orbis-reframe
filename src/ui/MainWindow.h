@@ -7,6 +7,7 @@
 #include <QMainWindow>
 #include <QSet>
 #include <QString>
+#include <QVector>
 
 #include <functional>
 #include <array>
@@ -768,9 +769,10 @@ private:
     // The grade from Copy grade (Colour panel / a clip's right-click menu);
     // kept for the session, not in the project.
     std::optional<ColorGrade> m_copiedGrade;
-    // The reframe keyframe from Copy keyframe (a diamond's menu or the Reframe
-    // section); kept for the session, not in the project.
-    std::optional<ReframeKey> m_copiedReframeKey;
+    // The reframe keyframes from Copy keyframe / Copy keyframes (a diamond's
+    // menu, a clip menu's selection, or the Reframe section); kept for the
+    // session, not in the project.
+    QVector<ReframeKey> m_copiedReframeKeys;
     QString m_lastLutDir; // where Load LUT... last found one
     std::optional<orbiscore::StabConfig> m_copiedStab; // Copy / Paste stabilization
     QString m_copiedStabSource;                        // ... and the file it was copied from

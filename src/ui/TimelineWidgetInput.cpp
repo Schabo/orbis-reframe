@@ -879,8 +879,11 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         const qint64 splitSrc = r.clip.trimInMs + std::llround((atMs - r.startMs) * r.clip.speed);
         // The keys selected in its lane, first: what a right-click on them
         // is most likely for.
+        QAction *copyKeys = nullptr;
         QAction *deleteKeys = nullptr;
         if (keySelectionClipId() == r.clip.id) {
+            copyKeys = menu.addAction(tr("Copy keyframes (%1)").arg(m_keySel.keys.size()));
+            copyKeys->setObjectName(QStringLiteral("keysCopyAction"));
             deleteKeys = menu.addAction(tr("Delete keyframes (%1)").arg(m_keySel.keys.size()));
             deleteKeys->setObjectName(QStringLiteral("keysDeleteAction"));
             menu.addSeparator();
@@ -937,7 +940,9 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         QAction *chosen = menu.exec(e->globalPos());
         if (!chosen)
             return;
-        if (deleteKeys && chosen == deleteKeys)
+        if (copyKeys && chosen == copyKeys)
+            emit keysCopyRequested(r.clip.id, m_keySel.keys);
+        else if (deleteKeys && chosen == deleteKeys)
             deleteSelectedKeys();
         else if (chosen == split)
             emit clipSplitRequested(r.clip.id, splitSrc);

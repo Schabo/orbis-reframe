@@ -583,10 +583,24 @@ void Timeline::upsertClipReframeKey(int clipId, qint64 sourceMs, ReframePose pos
 
 void Timeline::pasteClipReframeKey(int clipId, qint64 sourceMs, const ReframeKey &key, int pane)
 {
+    pasteClipReframeKeys(clipId, sourceMs, {key}, pane);
+}
+
+void Timeline::pasteClipReframeKeys(int clipId, qint64 baseSourceMs, const QVector<ReframeKey> &keys,
+                                    int pane)
+{
     ClipItem *c = mutableClipById(clipId);
-    if (!c || c->flat)
+    if (!c || c->flat || keys.isEmpty())
         return;
-    c->paneTrack(pane).setKey(sourceMs, key.pose, key.ease, ClipItem::kReframeDeleteSnapMs);
+    // The earliest key lands at the base; the rest keep their distance from it.
+    QVector<ReframeKey> sorted = keys;
+    std::sort(sorted.begin(), sorted.end(),
+              [](const ReframeKey &a, const ReframeKey &b) { return a.timeMs < b.timeMs; });
+    const qint64 firstMs = sorted.first().timeMs;
+    ReframeTrack &track = c->paneTrack(pane);
+    for (const ReframeKey &key : sorted)
+        track.setKey(baseSourceMs + (key.timeMs - firstMs), key.pose, key.ease,
+                     ClipItem::kReframeDeleteSnapMs);
     emit clipReframeChanged(c->id);
 }
 
