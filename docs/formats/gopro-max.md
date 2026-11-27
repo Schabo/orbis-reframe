@@ -61,17 +61,38 @@ the part). Parts are **not** listed in the container: there is no edit list, no
 
 ## Geometry
 
-The frame is three faces of 1344×1344 side by side, and the face order is the one
-FFmpeg's `gopromax_opencl` filter uses and `max2sphere` uses:
+Each stream is one strip of three cube faces, `side | centre | side`, 4096 = 1376 +
+1344 + 1376 at 5.6K. Axes: x right, y forward (the front lens), z up.
 
 ```
-lens A (stream 0):  FRONT | RIGHT | UP
-lens B (stream 1):  LEFT  | DOWN  | BACK
+stream 0:  LEFT  | FRONT | RIGHT     (FRONT upright; the strip runs on left to right)
+stream 1:  DOWN  | BACK  | TOP       (turned: BACK's right edge meets TOP, its left DOWN)
 ```
 
-✅ confirmed by matching our assembly against `max2sphere`'s output and against
-`v360_vulkan input=gopromax` — all three agree on the same assignment, and swapping
-any pair visibly breaks the sphere.
+✅ measured on `GS012267.360` at 5 s against FFmpeg 9.1's own stitch
+(`v360_vulkan input=gopromax`): for each face of our equirect, every strip region of
+both streams, all eight square symmetries and the face's position in the region were
+tried, and the picture correlated with FFmpeg's at NCC 0.998 (FRONT) / 0.999 (BACK)
+and ≥ 0.9994 for each half of the side faces; the runner-up of each face was ≤ 0.62
+(go_pro_2 `tools/eac_layout_fit.py`). In the face's (u, v) ∈ [-1, 1], u along the
+strip and v down it, with e = atan(component / dominant) · 4/π:
+FRONT (e_x, −e_z), RIGHT (−e_y, −e_z), LEFT (e_y, −e_z), BACK (e_z, −e_x),
+TOP (e_y, −e_x), DOWN (−e_y, −e_x).
+
+**The centre face** is 1344 px for 90°. **A side face** is 1312 px for 90°, cut in
+half at the lens boundary with a 64 px overlap between the halves: the half nearer the
+centre face at 0–656 of its region, the outer half at 720–1376 (mirrored the same way
+in the right region). Each half runs on into the overlap — its lens's view past the
+boundary — so the stitch cross-fades them there. ✅ (same measurement: each half fits
+at exactly that scale and offset.) In terms of the stream size: centre = H, side =
+(W − H)/2, overlap = 2·(side − centre), side span = side − overlap; only 5.6K is
+measured.
+
+An earlier version of this document, and the reference it was checked against
+(max2sphere's layout reproduced in go_pro_2 `tools/eac_stitch.py`), had the side faces
+as square 1376 px faces with a 32 px band and a different orientation for each face;
+a stitch built on it put face edges through the scene, which only showed once a real
+frame was looked at next to FFmpeg's.
 
 Each face is **equi-angular**: the direction of a pixel is the gnomonic projection of
 its position on the cube face, and the face's half-angle spans 45° at the edge —
@@ -84,26 +105,16 @@ the two lenses are 180° apart (`ANGY = 180.19°` in the calibration, see
 [[calibration]](#calibration)). ✅ (A pinhole model fitted to the same pixels reported
 inter-face angles of 80–96° and a 100° face FOV; those were the wrong model talking.)
 
-**The seam.** FRONT/RIGHT/UP come from one lens and LEFT/DOWN/BACK from the other, so
-the sphere has one seam, and it is a *cross-lens* seam: the two lenses are ~22.75 mm
-apart laterally and ~36.4 mm along the optical axis (`SHFX`/`SHFZ`), so near objects
-disagree across it by an amount that no blend can hide — that part is parallax, and it
-is forever. The blend is what makes the *far* field continuous:
-
-- The faces overlap by about 64 px at 5.6K (≈4.8° at the face edge). ⚠️ (measured as a
-  gradient discontinuity, not as a documented number; `max2sphere` calls the same
-  margin `blend = 32` per side, and the file's own `PMOD` tag says `32, 1408, 1376` —
-  see [[calibration]](#calibration), which is the better source).
-- A hard cut across the seam measures **7–12×** the surrounding image's own gradient
-  (a metric: median luminance jump across the boundary ÷ median gradient measured the
-  same way just inside the faces; 1.0 is invisible). A linear cross-fade over that
-  overlap measures **0.22–0.37** — the boundary ends up smoother than the image around
-  it. ✅ measured on four frames of three clips with `tools/seam_report.py` in the
-  sample tree.
-- FFmpeg's `gopromax` input and `max2sphere` both cross-fade that margin, and both
-  still leave a visible seam on close objects (a doubled arm, a soft edge on a roof
-  line). ✅ So the blend is a solved *problem* and an unsolved *quality* problem: the
-  remaining error is parallax and exposure, not geometry.
+**The seam.** The two lenses meet in the plane y = 0: through the middle of LEFT,
+RIGHT, TOP and DOWN, where each side face is split into its two halves. The lenses are
+~22.75 mm apart laterally and ~36.4 mm along the optical axis (`SHFX`/`SHFZ`), so near
+objects disagree across that boundary by an amount no blend can hide — that part is
+parallax. The cross-fade over the 64 px overlap makes the far field continuous: on
+`GS012267.360` at 5 s the luminance gradient across the boundary is the same as 3–10°
+away from it (ratio 1.00, ours and FFmpeg's alike), and the face edges of the hard cut
+measure 0.46 on the seam metric (median jump across a face boundary over the median
+busy gradient; the wrong layout measured 12–14). ✅ The seam numbers in earlier notes
+(7–12 hard cut, 0.22–0.37 blended) were measured on the wrong layout and don't stand.
 
 ## Telemetry — GPMF
 
@@ -208,9 +219,9 @@ These are the fisheye-domain calibration of the *lenses*, which is what the `.LR
 path needs and what a parallax warp across the seam needs. The `.360` EAC path needs
 none of it: the cube geometry is fixed by the projection.
 
-`PMOD = [32, 1408, 1376]` is almost certainly the stitch geometry — 1376 is the side
-face width `max2sphere` uses for this mode, 1408 = 1376 + 32, and 32 is its blend
-margin. ❓ unconfirmed which field is which, but it is the file stating the numbers
+`PMOD = [32, 1408, 1376]` looks like the stitch geometry — 1376 is the side region's
+width in the strip (measured, see [[geometry]](#geometry)), 32 is side region − centre
+face (half the 64 px overlap), and 1408 = 1376 + 32. ❓ unconfirmed which field is which, but it is the file stating the numbers
 FFmpeg currently infers from the frame size, and worth a look before hard-wiring any
 of them. `PRJT` is `'FSFB'` on two of these clips and `'EACO'` on two others — so the
 claim that it is "`GPRO` or `EACO`" in 360 modes is incomplete, and what the values
@@ -247,6 +258,21 @@ metric** — hard cut 7–12, cross-fade 0.22–0.37, and the number to beat is 
 FFmpeg's blend leaves on the same frame. Report same-lens and cross-lens boundaries
 separately: only the cross-lens one is parallax-limited, and a single blended number
 hides which one got worse.
+
+*Built:* the map in `orbiscore::EacCubeStitcher` (CPU) and in the GPU stitch's
+shared shader (`cubeSample` in `fisheye_stitch_common.glsl`, switched on by
+`StitchGpuParams::eacCube`), so `stitch::NativeStitchSource` opens a clip whose reader
+says `Projection::EquiAngularCube` on every path a fisheye clip has: Vulkan video
+decode, the GPU equirect, the fused view (playback, export), the viewport's lens
+frames, the privacy blur; the CPU stitch where there's no GPU (no privacy blur there).
+The seam machinery stands down: there is no lens model to measure. Measured on
+`GS012267.360` @ 5 s: the GPU and CPU stitches agree at PSNR 50.41 dB, and against
+FFmpeg's stitch at 37.97 dB (MAD 1.10 more than 15° from the lens boundary,
+resampling and colour conversion; 4.90 within 3° of it, the two cross-fades
+differing). `tools/playback_bench` on an RTX 5070: decode 3.3 ms a pair, a 5376-wide
+equirect 20.9 ms, the fused 1920 view 5.2 ms, an exact seek 51 ms — real time at
+25 fps with room to spare. `tools/view_compare`: the fused view matches the equirect
+path at 56–61 dB. `reframe_export` writes a 10 s 1080p HEVC (NVENC) from it.
 
 **4. Reframe and export.** Nothing GoPro-specific: the sphere is a sphere, and the
 existing `Viewer`/`ExportPipeline` take it from there. The one thing to check is the

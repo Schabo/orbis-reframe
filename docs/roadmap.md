@@ -118,7 +118,20 @@ each is in its document in [`formats/`](formats/README.md).
   the file as `MTRX`, and the telemetry-to-video alignment (slope 1.000000,
   gyro rms 0.36 ms against the packet PTS). Split takes place themselves in
   the take by the camera's own clock, which runs across the whole take. The
-  MAX2's 6.4K layout is unverified.
+  MAX2's 6.4K layout is unverified. Built so far: the reader (`camera::
+  GoproReader`: streams, telemetry, `.THM` / `.LRV`) and the cubemap
+  picture: the face layout measured against FFmpeg's `gopromax` stitch, as
+  data in the stitch (`StitchGpuParams::eacCube`, the shared shader's
+  `cubeSample`, `orbiscore::EacCubeStitcher` on the CPU), so
+  `NativeStitchSource` opens a MAX clip on every path -- GPU decode and
+  stitch, the fused view, export, the privacy blur. A separate cubemap
+  `IStitchSource` was the plan, and was built first; it was folded in
+  because every GPU path (decode, the fused view, lens frames for the
+  viewport, export, the blur) lives in `NativeStitchSource` and takes the
+  picture through one shader function, so a second source would have had
+  to copy all of it. Next: the gyro (the reader has it; the stabilizer's
+  axis map and which way the sphere faces need measuring), split takes,
+  and the seam's parallax.
 - **Insta360 Luna**: a flat camera, so the flat-video path; needs the
   10-bit / log handling there, through LUTs.
 - Not planned: the ONE X / ONE R / ONE RS.
@@ -271,7 +284,7 @@ each is in its document in [`formats/`](formats/README.md).
     in the file; the IMU axis map and the sync are measured on its clips.
   - Step 3, once real clips are available: DJI (built for the Avata 360,
     `camera::DjiReader`, *Other cameras*) and GoPro readers -- an
-    in-camera cubemap (`Projection`) behind its own `IStitchSource`, an
+    in-camera cubemap (`Projection`, built: `StitchGpuParams::eacCube`), an
     orientation track for cameras that record one, readout time per mode.
     The orientation track is built, from the Antigravity A1:
     `orbiscore::ImuTrack::orientation`, world up and a fixed horizontal

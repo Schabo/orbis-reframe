@@ -6,6 +6,7 @@
 
 #include <orbis-core/stitch/LensModel.h>             // orbiscore::CameraCalibration
 #include <orbis-core/stitch/FisheyeProjection.h>     // orbiscore::FisheyeStitcher, StitchParams
+#include <orbis-core/stitch/EacCubeStitcher.h>       // orbiscore::EacCubeStitcher (in-camera cubemap)
 #include <orbis-core/Image.h>                 // orbiscore::Image
 #include <orbis-core/media/FisheyeDemux.h>             // orbiscore::FisheyeDemux
 #include <orbis-core/stitch/SeamFlow.h>              // SeamFlowStrips, MeasureSeamFlowStrips
@@ -387,6 +388,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     vdec_.reset();
     demux_.reset();
     stitcher_.reset();
+    cube_.reset();
     gpu_.reset();
     info_ = ClipInfo{};
     last_error_.clear();
@@ -400,6 +402,8 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
         last_error_ = err + ": " + clip_path;
         return false;
     }
+    if (clip->projection == camera::Projection::EquiAngularCube)
+        return openCube(*clip, config);
     orbiscore::CameraCalibration calib;
     orbiscore::StitchParams params;
     bool guardFound = true;
@@ -505,6 +509,76 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     params_ = params;
     stitcher_ = std::move(stitcher);
     seam_flow_wanted_ = seam_flow_on_;
+    gpu_released_ = false;
+    resume_seek_ = false;
+    resume_from_us_ = 0;
+    return openDecode();
+}
+
+bool NativeStitchSource::openCube(const camera::ClipMetadata& clip,
+                                  const PreviewStitchConfig& config) {
+    const std::string& path = clip.path;
+    if (clip.lenses.size() != 2) {
+        last_error_ = "expected the two cube streams: " + path;
+        return false;
+    }
+    info_.width = clip.lensWidth;
+    info_.height = clip.lensHeight;
+    info_.fps = clip.fps;
+    info_.duration_ms = clip.durationMs;
+    // The preview file (.LRV) holds the raw fisheyes, not the cube: the
+    // full file always gives the picture.
+    lens_sources_ = clip.partSources();
+    if (config.proxy)
+        core::log::Info("[NativeStitchSource] %s: a cubemap clip plays from its own file\n",
+                        path.c_str());
+    // A face is a stream's height for 90 deg, so the full sphere is four
+    // faces around (AutoPreviewWidth's lens width, here two faces).
+    eq_w_ = config.width > 0 ? config.width : AutoPreviewWidth(2 * clip.lensHeight, info_.fps);
+    eq_h_ = config.width > 0 && config.height > 0 ? config.height : eq_w_ / 2;
+    auto cube = std::make_unique<orbiscore::EacCubeStitcher>();
+    if (!cube->configure(clip.lensWidth, clip.lensHeight, eq_w_, eq_h_)) {
+        last_error_ = "the streams (" + std::to_string(clip.lensWidth) + "x" +
+                      std::to_string(clip.lensHeight) + ") aren't a three-face cube belt: " + path;
+        return false;
+    }
+
+    // Nothing to measure: the camera joined the lenses, and the file's
+    // overlap is cross-faded by the map itself.
+    params_ = orbiscore::StitchParams{};
+    params_.depthSeam = false;
+    method_ = config.method;
+    seam_colour_on_ = false;
+    seam_colour_window_.reset();
+    seam_flow_on_ = seam_flow_wanted_ = false;
+    seam_flow_grid_ = {};
+    seam_flow_gpu_ = false;
+    seam_flow_window_.reset();
+    seam_fade_window_.reset();
+    seam_flow_field_.reset();
+    seam_state_ = orbiscore::SeamState{};
+    if (!seam_costs_)
+        seam_costs_ = std::make_unique<orbiscore::SeamCosts>();
+    if (!cut_stats_)
+        cut_stats_ = std::make_unique<orbiscore::SeamCutStats>();
+    clip_path_ = path;
+    lens_guard_ = config.lensGuard;
+    lens_calibration_ = config.lensCalibration;
+    analysis_dirty_ = true;
+    calib_ = orbiscore::CameraCalibration{};
+    lens_w_ = clip.lensWidth;
+    lens_h_ = clip.lensHeight;
+
+    gpu_params_ = orbiscore::StitchGpuParams{};
+    gpu_params_.eacCube = 1;
+    gpu_params_.fisheyeW = clip.lensWidth;
+    gpu_params_.fisheyeH = clip.lensHeight;
+    for (int k = 0; k < 9; ++k) {
+        const float id = (k % 4 == 0) ? 1.0f : 0.0f;
+        gpu_params_.outRot[k] = id;
+        gpu_params_.worldToLens[0][k] = gpu_params_.worldToLens[1][k] = id;
+    }
+    cube_ = std::move(cube);
     gpu_released_ = false;
     resume_seek_ = false;
     resume_from_us_ = 0;
@@ -880,6 +954,10 @@ void NativeStitchSource::ConfigureSeamWindow(orbiscore::SeamWindow& w) const {
 bool NativeStitchSource::MeasureNextSeamFrame(orbiscore::SeamWindow& w, int64_t& pts_ms) {
     last_error_.clear();
     blur_refused_ = false;
+    if (cube_) {
+        last_error_ = "a cubemap clip has no seam to measure";
+        return false;
+    }
     if (!resumeForRead())
         return false;
     float q[orbiscore::kSeamDepthBins];
@@ -1738,6 +1816,16 @@ Frame NativeStitchSource::readCpuDecode() {
 
     orbiscore::Image eq;
     eq.alloc(eq_w_, eq_h_);
+    if (cube_) {
+        // The cube's CPU stitch has no privacy blur: a frame that needs one
+        // isn't shown unblurred.
+        if (!p.blur.empty()) {
+            refuseFrame("the privacy blur needs the GPU stitch for this clip");
+            return refusedFrame(pts);
+        }
+        cube_->renderEquirect(a, b, eq);
+        return ToRgbaFrame(eq, pts);
+    }
     stitcher_->renderEquirect(a, b, eq, seamQ, blend, p.blur.data(), static_cast<int>(p.blur.size()),
                               p.seamColourActive ? &p.seamColour[0][0] : nullptr, p.seamFlow.get(),
                               p.seamColourActive ? &p.seamVeil[0][0] : nullptr);
@@ -1750,7 +1838,7 @@ Frame NativeStitchSource::ReadFrame() {
         return Frame{};
     if (vdec_)
         return readGpuAllVulkan();
-    if (demux_ && stitcher_)
+    if (demux_ && (stitcher_ || cube_))
         return readCpuDecode();
     last_error_ = "ReadFrame before a successful Open";
     return Frame{};

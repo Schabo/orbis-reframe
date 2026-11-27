@@ -716,6 +716,10 @@ void testBackupAudio()
 void testKinds()
 {
     CHECK(media::kindForPath(QStringLiteral("/a/VID.INSV")) == MediaItem::Kind::Clip360);
+    // A GoPro MAX take: the .360, not its .LRV proxy or .THM preview.
+    CHECK(media::kindForPath(QStringLiteral("GS012267.360")) == MediaItem::Kind::Clip360);
+    CHECK(!media::kindForPath(QStringLiteral("GS012267.LRV")));
+    CHECK(!media::kindForPath(QStringLiteral("GS012267.THM")));
     CHECK(media::kindForPath(QStringLiteral("x.mov")) == MediaItem::Kind::Video);
     CHECK(media::kindForPath(QStringLiteral("x.opus")) == MediaItem::Kind::Audio);
     CHECK(!media::kindForPath(QStringLiteral("LRV_1.lrv")));

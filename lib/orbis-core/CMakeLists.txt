@@ -75,6 +75,8 @@ add_library(orbiscore STATIC
     orbis-core/stitch/LensSource.h
     orbis-core/stitch/FisheyeProjection.h
     orbis-core/stitch/FisheyeProjection.cpp
+    orbis-core/stitch/EacCubeStitcher.h
+    orbis-core/stitch/EacCubeStitcher.cpp
     orbis-core/stitch/SeamAlignment.h
     orbis-core/stitch/SeamCorrection.h
     orbis-core/stitch/SeamAlignment.cpp

@@ -12,6 +12,8 @@
 
 #include "ClipMetadata.h"
 #include "MediaInfo.h"
+#include <orbis-core/stitch/BlurQuads.h>
+#include <orbis-core/stitch/EacCubeStitcher.h>
 #include "NativeStitchSource.h"
 #include "ProbeClip.h"
 #include <orbis-core/stab/GyroStabilizer.h>
@@ -1382,6 +1384,99 @@ void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::pa
 // and streams (docs/formats/gopro-max.md), the IMU lined up with the video
 // to the residuals that document measured, the .THM preview, and the .LRV
 // and .THM naming the clip.
+// The picture: the stitch source opens the camera's cubemap through the
+// same NativeStitchSource as every clip, and serves equirect frames at the
+// asked-for size and time, forward and after seeks, with the faces joining
+// up -- on the GPU where there is one, else on the CPU, the two agreeing.
+void testGoproMaxSource(const std::filesystem::path& clip360)
+{
+    const std::string path = clip360.string();
+    auto made = stitch::MakeStitchSource();
+    auto* cube = dynamic_cast<stitch::NativeStitchSource*>(made.get());
+    CHECK(cube);
+    if (!cube)
+        return;
+
+    stitch::PreviewStitchConfig cfg;
+    cfg.width = 1024;
+    cfg.height = 512;
+    CHECK(cube->Open(path, cfg));
+    if (!cube->GetLastError().empty())
+        std::printf("  %s\n", cube->GetLastError().c_str());
+    CHECK(cube->GetInfo().width == 4096 && cube->GetInfo().height == 1344);
+    std::printf("  GoPro MAX source: %s\n",
+                cube->AllGpu() ? "GPU decode + GPU stitch"
+                               : (cube->DecodesOnCpu() ? "CPU decode" : "?"));
+
+    // Opened at the start, as every source is.
+    stitch::Frame f0 = cube->ReadFrame();
+    CHECK(f0.width == 1024 && f0.height == 512 && f0.rgba.size() == 1024u * 512u * 4u);
+    CHECK(f0.timestamp_ms == 0);
+
+    // A seek lands on the first frame at or after the target (25 fps: 40 ms),
+    // and reading on goes forward one frame.
+    stitch::Frame f = cube->GetFrame(5000);
+    CHECK(f.timestamp_ms == 5000 && f.width == 1024);
+    stitch::Frame next = cube->ReadFrame();
+    CHECK(next.timestamp_ms == 5040);
+    // A real picture, not a blank: the frame's luma spread is the scene's.
+    double sum = 0, sq = 0;
+    const size_t n = f.rgba.size() / 4;
+    for (size_t i = 0; i < n; ++i) {
+        const double v = f.rgba[i * 4 + 1];
+        sum += v;
+        sq += v * v;
+    }
+    const double mean = sum / double(n), sd = std::sqrt(sq / double(n) - mean * mean);
+    std::printf("  GoPro MAX equirect @5000 ms: mean %.1f, sd %.1f\n", mean, sd);
+    CHECK(sd > 10.0);
+    // The same frame twice is the same picture.
+    stitch::Frame again = cube->GetFrame(5000);
+    CHECK(again.rgba == f.rgba);
+    // The CPU stitch (no GPU stitch at all) draws the same picture: one
+    // map, two implementations (EacCubeStitcher, the shader's cubeSample).
+    {
+        setenv("ORBIS_NO_GPU_STITCH", "1", 1);
+        stitch::NativeStitchSource cpu;
+        const bool opened = cpu.Open(path, cfg);
+        unsetenv("ORBIS_NO_GPU_STITCH");
+        CHECK(opened && !cpu.AllGpu());
+        stitch::Frame c = cpu.GetFrame(5000);
+        CHECK(c.timestamp_ms == f.timestamp_ms && c.rgba.size() == f.rgba.size());
+        if (c.rgba.size() == f.rgba.size() && !f.rgba.empty()) {
+            double se = 0;
+            for (size_t i = 0; i < f.rgba.size(); i += 4)
+                for (int k = 0; k < 3; ++k) {
+                    const double d = double(f.rgba[i + k]) - double(c.rgba[i + k]);
+                    se += d * d;
+                }
+            const double mse = se / double(f.rgba.size() / 4 * 3);
+            const double psnr = mse > 0 ? 10.0 * std::log10(255.0 * 255.0 / mse) : 99.0;
+            std::printf("  GoPro MAX GPU vs CPU stitch @5000 ms: PSNR %.2f dB\n", psnr);
+            CHECK(psnr > 35.0);
+        }
+    }
+    // The faces join up on the real picture: the jump across every face
+    // boundary of the hard cut is the size of the image's own gradients
+    // (1.0 would be no seam at all; the layout this replaced measured 12-14).
+    {
+        orbiscore::FisheyeDemux demux;
+        std::string derr;
+        const auto meta = camera::ReadClipMetadata(path, &derr);
+        orbiscore::Image s0, s1;
+        orbiscore::FramePts pts;
+        CHECK(meta && demux.open(meta->partSources(), derr) && demux.seekTo(5000, derr) &&
+              demux.readNextPair(s0, s1, &pts, derr));
+        const double ratio = orbiscore::EacCubeStitcher::SeamRatio(s0, s1);
+        std::printf("  GoPro MAX face seams @%lld ms: ratio %.2f\n", (long long)pts.ms, ratio);
+        CHECK(std::isfinite(ratio) && ratio < 2.0);
+    }
+    // Past the end: no frame, no error.
+    CHECK(cube->SeekTo(cube->GetInfo().duration_ms + 1000) || !cube->GetLastError().empty());
+    stitch::Frame end = cube->ReadFrame();
+    CHECK(end.rgba.empty());
+}
+
 void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::path& dir)
 {
     std::string err;
@@ -1506,6 +1601,8 @@ void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::p
     const std::filesystem::path heroDir = dir / "gopro_not_mine";
     std::filesystem::create_directories(heroDir);
     CHECK(!camera::ReadClipMetadata((heroDir / "nope.360").string(), &err));
+
+    testGoproMaxSource(clip360);
 }
 
 int main(int argc, char** argv)

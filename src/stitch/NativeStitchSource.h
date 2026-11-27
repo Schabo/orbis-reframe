@@ -24,6 +24,7 @@ struct AVFrame;
 namespace orbiscore {
 class FisheyeDemux;
 class FisheyeStitcher;
+class EacCubeStitcher;
 class VulkanVideoDecoder;
 class SeamFlowEstimator;
 struct Image;
@@ -379,6 +380,13 @@ private:
 
     std::unique_ptr<orbiscore::FisheyeDemux> demux_;          // CPU decode (stage 1 / fallback)
     std::unique_ptr<orbiscore::FisheyeStitcher> stitcher_; // CPU reference / fallback
+    // A clip the camera stitched itself into an equi-angular cubemap (the
+    // GoPro MAX; openCube): its CPU stitch, in place of stitcher_, which stays
+    // null -- so every seam path stands down. The GPU stitch samples the cube
+    // through StitchGpuParams::eacCube.
+    std::unique_ptr<orbiscore::EacCubeStitcher> cube_;
+    // Open()'s cubemap half: the clip's streams, no lens model, no seam.
+    bool openCube(const camera::ClipMetadata& clip, const PreviewStitchConfig& config);
     std::unique_ptr<render::VulkanFisheyeStitcher> gpu_;   // GPU stitch (own device or FFmpeg's)
     orbiscore::StitchGpuParams gpu_params_{};              // geometry for gpu_, from stitcher_
     orbiscore::CameraCalibration calib_;                     // what stitcher_ was configured with
@@ -526,7 +534,8 @@ bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
                             orbiscore::CameraCalibration& calib, orbiscore::StitchParams& params,
                             std::string& err, bool* guardFound = nullptr);
 
-// Returns a fresh, un-Open()'d stitch source (always a NativeStitchSource).
+// Returns a fresh, un-Open()'d stitch source (always a NativeStitchSource,
+// which opens dual-fisheye clips and the cameras' own cubemaps alike).
 // Kept as a factory so a second backend could slot back in without touching
 // callers.
 std::unique_ptr<IStitchSource> MakeStitchSource();

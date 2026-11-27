@@ -10,6 +10,7 @@
 #include <orbis-core/insta360/Calibration.h>
 #include <orbis-core/dji/DjiMeta.h>
 #include <orbis-core/gopro/Gpmf.h>
+#include <orbis-core/stitch/EacCubeStitcher.h>
 #include <orbis-core/stitch/FisheyeProjection.h>
 #include <orbis-core/metadata/Gps.h>
 #include <orbis-core/Image.h>
@@ -3801,6 +3802,155 @@ void testGoproGpmf()
     CHECK(orbiscore::ParseGpmfSensorSample(nullptr, 0).empty());
 }
 
+// The GoPro MAX's in-camera cubemap: the two strips' faces onto the sphere.
+// What this pins is the layout docs/formats/gopro-max.md measured on real
+// clips and tools/eac_stitch.py reproduces -- each strip is SIDE | CENTRE |
+// SIDE (4096 = 1376 | 1344 | 1376), one stream carries the front belt
+// (FRONT/LEFT/RIGHT) and the other the back belt (BACK/TOP/DOWN), DOWN/BACK/TOP
+// are stored turned 90 deg counter-clockwise, and each side face cross-fades
+// over the 32 px where both lenses see it -- plus the face ids the seam metric
+// reads back. All synthetic, so it needs no clip: the real-clip numbers (seam
+// 5.31 for the right belt, 8.98 swapped on GS012267.360) come from the tools.
+void testEacCube()
+{
+    const int SW = 4096, SH = 1344; // the 5.6K layout
+    const int SIDE = 1376, CENTRE = 1344, SPAN = 1312, OVERLAP = 64;
+    const int OW = 720, OH = 360; // 2 px a degree
+
+    {
+        orbiscore::EacCubeStitcher st;
+        CHECK(st.configure(SW, SH, OW, OH));
+        CHECK(st.outWidth() == OW && st.outHeight() == OH);
+        // The layout's numbers from the stream size alone.
+        CHECK(st.centreWidth() == CENTRE && st.sideSpan() == SPAN && st.overlap() == OVERLAP);
+        // Not a belt with an overlap: three equal faces, or a width that
+        // doesn't split into side | centre | side.
+        orbiscore::EacCubeStitcher bad;
+        CHECK(!bad.configure(3 * SH, SH, OW, OH));
+        CHECK(!bad.configure(SW + 1, SH, OW, OH));
+    }
+
+    // Each strip region a flat level, so a direction's level says which
+    // stream and region it was read from.
+    auto flat = [](orbiscore::Image& img, int left, int centre, int right) {
+        img.alloc(SW, SH);
+        for (int y = 0; y < SH; ++y)
+            for (int x = 0; x < SW; ++x) {
+                const int v = x < SIDE ? left : (x < SIDE + CENTRE ? centre : right);
+                uint8_t* p = &img.rgb[(size_t(y) * SW + x) * 3];
+                p[0] = p[1] = p[2] = uint8_t(v);
+            }
+    };
+    orbiscore::Image a, b;
+    flat(a, 20, 40, 60);
+    flat(b, 100, 120, 140);
+
+    orbiscore::EacCubeStitcher st;
+    CHECK(st.configure(SW, SH, OW, OH));
+    orbiscore::Image eq;
+    std::vector<int16_t> owner(size_t(OW) * OH);
+    st.renderEquirect(a, b, eq, owner.data());
+    CHECK(eq.w == OW && eq.h == OH);
+
+    auto at = [&](double lonDeg, double latDeg) {
+        int x = int(std::lround((lonDeg / 360.0 + 0.5) * OW - 0.5));
+        const int y = int(std::lround((0.5 - latDeg / 180.0) * OH - 0.5));
+        return size_t(y) * OW + size_t((x % OW + OW) % OW);
+    };
+    auto level = [&](double lonDeg, double latDeg) { return int(eq.rgb[at(lonDeg, latDeg) * 3]); };
+    auto face = [&](double lonDeg, double latDeg) { return int(owner[at(lonDeg, latDeg)]); };
+    using F = orbiscore::EacCubeStitcher;
+
+    // Stream 0 (a) carries LEFT | FRONT | RIGHT, stream 1 (b) DOWN | BACK |
+    // TOP: measured against FFmpeg's gopromax stitch.
+    CHECK(level(0, 0) == 40 && face(0, 0) == F::kFront);
+    CHECK(level(-90, 0) == 20 && face(-90, 0) == F::kLeft);
+    CHECK(level(90, 0) == 60 && face(90, 0) == F::kRight);
+    CHECK(level(180, 0) == 120 && face(180, 0) == F::kBack);
+    CHECK(level(0, -89) == 100 && face(0, -89) == F::kDown);
+    CHECK(level(0, 89) == 140 && face(0, 89) == F::kTop);
+    CHECK(face(44, 0) == F::kFront && face(46, 0) == F::kRight);
+
+    // The orientation of every face: a strip whose pixel says where in the
+    // strip it is (x in R/G, y in B, coarse), read back at a direction and
+    // compared with where the measured map puts that direction. Checked at
+    // the centre of each face and towards two of its edges.
+    auto coded = [](orbiscore::Image& img) {
+        img.alloc(SW, SH);
+        for (int y = 0; y < SH; ++y)
+            for (int x = 0; x < SW; ++x) {
+                uint8_t* p = &img.rgb[(size_t(y) * SW + x) * 3];
+                p[0] = uint8_t(x / 16);       // 0..255 along the strip
+                p[1] = uint8_t(x % 16 * 16);
+                p[2] = uint8_t(y * 255 / (SH - 1));
+            }
+    };
+    coded(a);
+    coded(b);
+    st.renderEquirect(a, b, eq, nullptr, /*blend=*/false);
+    auto stripX = [&](double lon, double lat) { return eq.rgb[at(lon, lat) * 3] * 16.0; };
+    auto stripY = [&](double lon, double lat) { return eq.rgb[at(lon, lat) * 3 + 2] / 255.0 * (SH - 1); };
+    // FRONT upright: lon runs with the strip's x, up is its first row.
+    CHECK(std::abs(stripX(0, 0) - (SIDE + CENTRE / 2.0)) < 24);
+    CHECK(stripX(30, 0) > stripX(-30, 0) + 400);
+    CHECK(stripY(0, 30) < stripY(0, -30) - 400);
+    // RIGHT runs on from FRONT towards the back; LEFT ends where FRONT starts.
+    CHECK(stripX(80, 0) < stripX(120, 0));
+    CHECK(stripX(-120, 0) < stripX(-80, 0) && stripX(-80, 0) < SIDE);
+    // BACK is turned: going up (towards TOP) runs along the strip's x, and
+    // lon runs down its rows.
+    CHECK(stripX(180, 30) > stripX(180, -30) + 400);
+    CHECK(std::abs(stripY(150, 0) - stripY(-150, 0)) > 400);
+
+    // The lens boundary at the middle of every side face: each half where
+    // the measured map puts it, the overlap between them. At lon 90 (RIGHT's
+    // middle) the hard cut reads the strip just before 2720 + 656 or just
+    // after 2720 + 720 -- never inside the overlap.
+    {
+        const double x89 = stripX(89, 0), x91 = stripX(91, 0);
+        CHECK(std::abs(x89 - (SIDE + CENTRE + SPAN / 2.0)) < 24);
+        CHECK(std::abs(x91 - (SIDE + CENTRE + SPAN / 2.0 + OVERLAP)) < 24);
+    }
+
+    // The cross-fade: a strip whose overlap holds 200 and is 0 elsewhere --
+    // the blend reads the overlap near each lens boundary, so the picture
+    // lifts there, peaks at the boundary, and nowhere on the front or back.
+    auto overlapOnly = [&](orbiscore::Image& img) {
+        img.alloc(SW, SH);
+        for (int y = 0; y < SH; ++y)
+            for (int x = 0; x < SW; ++x) {
+                const int lx = x < SIDE ? x : x - SIDE - CENTRE;
+                const bool inOv = (x < SIDE || x >= SIDE + CENTRE) && lx >= SPAN / 2 &&
+                                  lx < SPAN / 2 + OVERLAP;
+                uint8_t* p = &img.rgb[(size_t(y) * SW + x) * 3];
+                p[0] = p[1] = p[2] = inOv ? 200 : 0;
+            }
+    };
+    overlapOnly(a);
+    overlapOnly(b);
+    orbiscore::Image soft, hard;
+    st.renderEquirect(a, b, soft);
+    st.renderEquirect(a, b, hard, nullptr, /*blend=*/false);
+    auto lv = [&](const orbiscore::Image& img, double lon, double lat) {
+        return int(img.rgb[at(lon, lat) * 3]);
+    };
+    CHECK(lv(hard, 89, 0) == 0 && lv(hard, 91, 0) == 0); // hard cut: no overlap read
+    // The blend reads it: at the boundary each half reaches the overlap's
+    // edge (half its level), and a few degrees on one half is inside it.
+    CHECK(lv(soft, 90, 0) > 60 && lv(soft, 92, 0) > 20 && lv(soft, 88, 0) > 20);
+    CHECK(lv(soft, -90, 0) > 60 && lv(soft, 0, 89.9) > 0);
+    CHECK(lv(soft, 0, 0) == 0 && lv(soft, 180, 0) == 0);
+    CHECK(lv(soft, 80, 0) == 0); // 10 deg off the boundary: one lens alone
+
+    // The seam ratio: nothing to say about a strip that isn't a belt.
+    {
+        orbiscore::Image small, other;
+        small.alloc(2048, SH);
+        other.alloc(2048, SH);
+        CHECK(std::isnan(orbiscore::EacCubeStitcher::SeamRatio(small, other)));
+    }
+}
+
 void testYcbcrRows()
 {
     using orbiscore::YcbcrMatrix;
@@ -3896,6 +4046,7 @@ int main()
     testMotion();
     testGpsAlignedByAcceleration();
     testGoproGpmf();
+    testEacCube();
     testYcbcrRows();
 
     if (g_failures == 0)

@@ -103,7 +103,7 @@ void packParams(const orbiscore::StitchGpuParams& p, int eqW, int eqH, ShaderPar
     sp.meiA[3] = p.fx[1];
     sp.meiB[0] = p.fy[0];
     sp.meiB[1] = p.fy[1];
-    sp.meiB[2] = 0.0f;
+    sp.meiB[2] = static_cast<float>(p.eacCube); // fisheye_stitch_common.glsl cubeActive()
     sp.meiB[3] = static_cast<float>(p.accessory);
     sp.lensModel[0] = static_cast<float>(p.thetaPoly);
     sp.lensModel[1] = p.k5[0];
