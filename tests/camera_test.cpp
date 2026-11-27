@@ -1510,9 +1510,10 @@ void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::p
     const auto imu = camera::ReadClipImu(clip360.string());
     CHECK(imu);
     if (imu) {
-        // Body axes (MTRX applied), mapped as measured by rendering the
-        // horizon-locked view through all 24 candidates.
-        CHECK(imu->axisMap == "z,-x,-y");
+        // Body axes (MTRX applied), mapped to the stitch's world as measured
+        // from the picture's own frame-to-frame turn (go_pro_2
+        // tools/gyro_axes_fit.py; docs/formats/gopro-max.md).
+        CHECK(imu->axisMap == "-y,x,z");
         CHECK(imu->hasOffset && imu->captureScale == 1.0);
         // ~800 Hz over 64.56 s of video.
         CHECK(imu->samples.size() > 50000 && imu->samples.size() < 53000);

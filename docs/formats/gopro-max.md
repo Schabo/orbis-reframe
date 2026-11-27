@@ -150,6 +150,27 @@ body, as a real matrix rather than a guess. `ORIN`/`ORIO` (`XzY`/`ZXY`) and `SIU
 (`rad/s`, `m/s²`) say the same thing in words. **Use `MTRX` for the axis map** rather
 than a hard-coded string: it is the file telling us, and it is per-stream. ✅
 
+### Gyro axes
+
+`MTRX` takes the sensor to the camera body; the body to the stitched sphere is not in
+the file. Measured from the picture (go_pro_2 `tools/gyro_axes_fit.py`): FFmpeg's
+equirect of frames k and k + 1 (the same orientation as ours, see
+[[geometry]](#geometry)), frame k turned by the gyro's turn over the frame under each of
+the 24 proper signed permutations, scored by how much of the photometric change to
+frame k + 1 it explains. One map wins on both clips tried: **sphere (x right, y
+forward, z up) ← body (−y, −z, x)**, i.e. `-y,x,z` in the stabilizer's world (+X right,
++Y up, −Z forward) — 30.5 % explained on `GS012267.360` (runner-up 3.4 %) and 32.5 % on
+`GS012268.360` (runner-up 9.7 %); the X5's `z,-x,-y`, used before, explains none. Gain
+0.9–1.0. ✅ In the editor's stabilizer (`tools/residual_stab`, `GS012267.360` 0–15 s):
+forward-view motion left, Direction lock 0.62°/frame against 1.09 unstabilized
+(`z,-x,-y`: 1.12, worse than nothing); the default mode 0.86; Horizon lock's up within
+1.6° roll / 0.7° pitch of gravity.
+
+The picture's turn fits best with the gyro ~10 ms later than the frame's time (both
+clips; 0, +10, +20 ms scored 10.40 / 9.89 / 10.43 on the first). ⚠️ Likely the
+rolling shutter (the middle row is read about that long after the first) rather than
+a clock offset; not applied yet — the readout time per mode is the thing to measure.
+
 `CameraOrientation` at ~25 Hz is GoPro's own per-frame estimate of where the camera
 is pointing. ❓ its convention and accuracy are unknown, but it is the natural thing
 to compare a horizon lock against, and it is free.

@@ -69,9 +69,9 @@ yet.
 
 A GoPro MAX `.360` opens, plays and exports (experimental). The camera
 stitched it already, so the Stitching panel's settings don't apply.
-Stabilization doesn't use its gyro yet, a take the camera split into several
-files opens one file at a time, and the camera's preview file (`.LRV`)
-isn't used for playback.
+Stabilization uses its gyro. A take the camera split into several files
+opens one file at a time, and the camera's preview file (`.LRV`) isn't used
+for playback.
 
 Other Insta360 models, such as the X4, X4 Air and X3, aren't supported
 yet, and orbis-reframe hasn't been tested with them. Their clips may open,

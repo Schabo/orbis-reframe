@@ -502,10 +502,14 @@ std::optional<orbiscore::ImuTrack> GoproReader::readImu(const ClipMetadata& clip
         }
         track.samples.push_back(s);
     }
-    // The samples are in camera body axes (MTRX applied above); the map to
-    // the sphere was measured by rendering the horizon-locked view through
-    // all 24 candidates: sphere rows <- body +z, -x, -y (docs/NOTES.md).
-    track.axisMap = "z,-x,-y";
+    // The samples are in camera body axes (MTRX applied above). The map to
+    // the stitch's world (+X right, +Y up, -Z forward) is measured from the
+    // picture: each candidate signed permutation turns frame k by the gyro's
+    // turn to frame k + 1, and only this one explains the frame-to-frame
+    // motion (30.5 % of the photometric change on GS012267.360, 32.5 % on
+    // GS012268.360; the runner-up 3.4 % / 9.7 %, the X5's z,-x,-y none;
+    // docs/formats/gopro-max.md [[gyro axes]]).
+    track.axisMap = "-y,x,z";
 
     // One frameTimes pair per sensor sample: video time is the packet's PTS
     // and the track time that sample's gyro STMP, so each pair is exact by
