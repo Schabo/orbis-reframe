@@ -343,7 +343,10 @@ far the back lens is turned to line up with the front one (yaw, pitch and
 roll, in degrees), how far its picture's centre moves (in percent of the
 picture's width), and how much larger (or, negative, smaller) both lenses
 draw the picture near the seam (the lens scale, in percent). A fraction of a
-degree, and a few hundredths of a percent, are normal. For the lens colour:
+degree, and a few hundredths of a percent, are normal. A correction is kept
+only when it lines the lenses up better than the camera's lens model; when
+none does, the clip is stitched with the lens model as it is, and the tooltip
+says so. For the lens colour:
 how far apart the two lenses were on the seam, per colour, in percent; a few
 percent is normal.
 

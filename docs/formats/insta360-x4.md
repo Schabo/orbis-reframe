@@ -190,6 +190,9 @@ a building, still for 5 s, then turned about the vertical.
   0.14°. The seam can't tell a lens-0 centre error from a tilt of the
   lenses, so this is a description, not the cause; nothing in the file
   gives these numbers.
+- The app's per-clip seam fit (the old stitcher) measures the offset as
+  1.29° and takes it to 0.72°, ending at its bounds (lens 1 yaw −2.5°,
+  centre −1 %): a fine-tune of lens 1 can't take out this much.
 - ⚠️ Against the thumbnail our stitch also makes lens 0's picture 0.59 %
   too large and lens 1's 0.44 % too small: the X5's sign and size, where
   the strings carry each lens's radial model in the other's place (X5

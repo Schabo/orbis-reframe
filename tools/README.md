@@ -91,6 +91,10 @@ against, and the app's fallback. It can also measure the seam between the
 two lenses:
 - `--measure-seam IN OUT` fits the seam correction (lens-1 rotation, its
   centre, the radial scale) on frames spread over a range, as the app does.
+  It prints the offset before and after, and how many textured blocks had
+  no clear match within the search (about ±3°, "beyond the search"): many
+  of those mean the lenses are further apart than the fit measures, or the
+  picture repeats. A fit that doesn't lower the offset gives no correction.
 - `--seam-offset IN OUT` measures how far the lenses still disagree, in
   degrees, with the correction given by `--seam Y,P,R,CU,CV,S` (as the fit
   and the app's status line print it); pick other frames than the fit's to

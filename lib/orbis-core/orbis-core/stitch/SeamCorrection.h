@@ -31,7 +31,9 @@ struct SeamCorrection {
 // measured lens 1's rotation only; 2 measured on the X5's radial models as
 // the strings have them, before the reader exchanged them
 // (InsvModel::radialModelsExchanged) -- a correction for the old reading,
-// which makes the seam's worst stretches worse on the new one.
-constexpr int kSeamCorrectionMethod = 3;
+// which makes the seam's worst stretches worse on the new one; 3 searched
+// only +-1 deg (a seam further off measured as nearly right) and kept a fit
+// that didn't lower the offset.
+constexpr int kSeamCorrectionMethod = 4;
 
 } // namespace orbiscore

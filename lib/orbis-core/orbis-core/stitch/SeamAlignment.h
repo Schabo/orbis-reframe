@@ -25,7 +25,10 @@
 // Method: sample a strip around the seam circle from both lenses (grey,
 // half resolution), and for each textured 5-deg block find the shift of lens
 // 1's strip that matches lens 0's best, with its uncertainty (the NCC peak's
-// curvature: an edge pins down only the direction across it). Then a
+// curvature: an edge pins down only the direction across it): first on a
+// coarse strip over a few degrees, then at full resolution around that, so a
+// calibration a degree or more off is measured, not read as the few blocks
+// that happen to agree. Then a
 // weighted least-squares fit of the correction's six numbers to the shifts,
 // through the stitcher's own projection (numerical derivatives), re-measured
 // over a few rounds. Parallax only ever shifts the match one way (across the
@@ -33,7 +36,9 @@
 // further that way than the fit explains gives up its across-the-seam part
 // (one-sided), and the shift along the seam -- which parallax can't touch --
 // carries the principal point. A weak pull towards no correction keeps the
-// directions the clip's blocks don't pin down where they are.
+// directions the clip's blocks don't pin down where they are. A fit that
+// doesn't lower the offset on the blocks found both before and after it is
+// dropped: the result is then no correction.
 // Dependency-free (orbiscore lib).
 
 namespace orbiscore {
@@ -47,6 +52,14 @@ struct SeamAlignmentResult {
     double offsetAfterDeg = 0;
     int frames = 0;
     int blocks = 0; // block measurements the last round used
+    // Textured blocks with no clear match within the search (about +-3
+    // deg), before the fit and in the last round: the lenses are that far
+    // apart there, or the picture repeats.
+    int beyondSearchBefore = 0;
+    int beyondSearch = 0;
+    // The fit ran but didn't lower the offset on the blocks found both
+    // before and after it: `ok`, and the correction is none.
+    bool notImproved = false;
     std::string message; // why it failed, or a one-line summary
 };
 

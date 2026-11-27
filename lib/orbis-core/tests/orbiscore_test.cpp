@@ -1196,6 +1196,32 @@ void testSeamAlignment()
     CHECK(orbiscore::MeasureSeamOffset(cal, none, kSize, kSize, frames) > 0.3);
 }
 
+// Lenses well over a degree apart: measured as that far, not as the few
+// blocks a narrow search would find agreeing, and fitted.
+void testSeamAlignmentFarOff()
+{
+    const orbiscore::CameraCalibration cal = x5Calibration();
+    constexpr int kSize = 1536;
+    orbiscore::StitchParams truthParams = insta360Params();
+    truthParams.seam = {{1.6, -1.2, 0.4}, {0.0, 0.0}, 1.0};
+    orbiscore::FisheyeStitcher truth;
+    CHECK(truth.configure(cal, kSize, kSize, truthParams));
+    std::vector<orbiscore::SeamFrame> frames;
+    for (int seed = 0; seed < 2; ++seed)
+        frames.push_back(orbiscore::MakeSeamFrame(seamLensPicture(truth, 0, kSize, seed, 0.0, 0.0, 1.0),
+                                                  seamLensPicture(truth, 1, kSize, seed, 0.0, 0.0, 1.0)));
+
+    const orbiscore::StitchParams none = insta360Params();
+    const double before = orbiscore::MeasureSeamOffset(cal, none, kSize, kSize, frames);
+    std::printf("seam offset, far off: %.3f deg\n", before);
+    CHECK(before > 1.0);
+    const orbiscore::SeamAlignmentResult r = orbiscore::EstimateSeamAlignment(cal, none, kSize, kSize, frames);
+    std::printf("seam alignment, far off: %s\n", r.message.c_str());
+    CHECK(r.ok && !r.notImproved);
+    CHECK(r.offsetBeforeDeg > 1.0 && r.offsetAfterDeg < 0.05);
+    CHECK(near(r.correction.lens1RotDeg[2], 0.4, 0.05));
+}
+
 // The seam cut's blend: weights from the per-bin cut and fade, the plain
 // cross-fade without one.
 void testSeamBlend()
@@ -3717,6 +3743,7 @@ int main()
     testSeamDepthUniqueness();
     testSeamWindowPathIndependence();
     testSeamAlignment();
+    testSeamAlignmentFarOff();
     testSeamBlend();
     testSeamCutWindow();
     testSeamCutStats();

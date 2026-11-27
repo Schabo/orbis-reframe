@@ -19,23 +19,42 @@ constexpr double kDeg = kPi / 180.0;
 // lens 0's axis, kStripHalf cells either side of 90 deg; columns the azimuth
 // around it. A cell is ~0.8 px of the half-res lens image at the seam.
 constexpr double kCellDeg = 0.1;
-constexpr int kStripHalf = 40; // +-4 deg
-constexpr int kRows = 2 * kStripHalf + 1;
 constexpr int kCols = 3600; // 360 deg
 
-// Blocks: kBlockCols columns wide, matched over the middle +-kCoreHalf rows;
-// lens 1's block is searched over +-search cells both ways.
+// Blocks: kBlockCols columns wide, matched over the middle +-kCoreHalf rows.
 constexpr int kBlockCols = 50; // 5 deg
 constexpr int kBlocks = kCols / kBlockCols;
 constexpr int kCoreHalf = 25; // +-2.5 deg
-constexpr int kSearchFirst = 10; // +-1 deg from no correction
-constexpr int kSearchLater = 5;  // +-0.5 deg once the fit is close
+
+// Lens 1's block is searched on the strip over +-kSearchNear cells. Where
+// that finds no match -- the best on the search's edge, or no clear peak --
+// it is searched again on a coarse strip (kCoarse x kCoarse cells averaged)
+// over +-kSearchCoarse coarse cells, then on the strip over +-kSearchFine
+// cells around the coarse match. A calibration can be off by more than a
+// degree (it is on the X4 Air), and there the near search alone keeps only
+// the few blocks that happen to agree, which makes the seam look nearly
+// right. The near search first, because the wider one finds more false
+// matches (an edge, a repeating pattern) where the lenses do agree.
+constexpr int kSearchNear = 10;  // +-1 deg
+constexpr int kCoarse = 5;       // 0.5 deg cells
+constexpr int kSearchCoarse = 6; // +-3 deg
+constexpr int kSearchFine = 5;   // +-0.5 deg: the coarse match's cell and its neighbours
+// The furthest a match goes, in cells, and the strip that holds it.
+constexpr int kMaxShift = std::max(kSearchNear, (kSearchCoarse - 1) * kCoarse + kSearchFine);
+constexpr int kStripHalf = 55; // +-5.5 deg
+static_assert(kCoreHalf + kMaxShift <= kStripHalf && kStripHalf % kCoarse == 0 &&
+              kCoreHalf % kCoarse == 0 && kBlockCols % kCoarse == 0 && kCols % kCoarse == 0);
 constexpr int kRounds = 3;
 
 // A block is used when both lenses show texture (grey standard deviation, 0..255)
 // and the best match is a clear peak.
 constexpr double kMinTexture = 4.0;
 constexpr double kMinPeak = 0.75;
+// The coarse strip only has to point the fine search the right way, but to
+// one place: the best match elsewhere (2 coarse cells or more away) lower by
+// kCoarseMargin.
+constexpr double kMinCoarsePeak = 0.5;
+constexpr double kCoarseMargin = 0.1;
 constexpr int kMinBlocks = 12;
 
 // The six numbers fitted, in units that move the seam by similar amounts:
@@ -91,19 +110,29 @@ double wrapDeg(double d)
     return std::remainder(d, 360.0);
 }
 
-// Both lenses' grey along the strip at this stitch geometry; NaN where a
-// lens doesn't see the direction.
+// Both lenses' grey along the strip (or the coarse strip); NaN where a lens
+// doesn't see the direction.
 struct Strip {
+    int half = 0;      // rows either side of the seam row
+    int cols = 0;
+    int blockCols = 0; // one block's columns
+    int coreHalf = 0;  // rows matched either side of the seam row
     std::vector<float> g[2];
+
+    int rows() const { return 2 * half + 1; }
 };
 
 Strip sampleStrip(const FisheyeStitcher& st, const SeamFrame& f, double scale)
 {
     Strip s;
+    s.half = kStripHalf;
+    s.cols = kCols;
+    s.blockCols = kBlockCols;
+    s.coreHalf = kCoreHalf;
     const Mat3 l2w = transpose(st.lensProjection(0).worldToLens);
     for (auto& g : s.g)
-        g.assign(static_cast<size_t>(kRows) * kCols, std::numeric_limits<float>::quiet_NaN());
-    for (int r = 0; r < kRows; ++r)
+        g.assign(static_cast<size_t>(s.rows()) * kCols, std::numeric_limits<float>::quiet_NaN());
+    for (int r = 0; r < s.rows(); ++r)
         for (int c = 0; c < kCols; ++c) {
             const Vec3 w = stripDir(l2w, 90.0 + (r - kStripHalf) * kCellDeg, c * kCellDeg);
             for (int i = 0; i < 2; ++i) {
@@ -120,8 +149,39 @@ Strip sampleStrip(const FisheyeStitcher& st, const SeamFrame& f, double scale)
     return s;
 }
 
+// The strip with kCoarse x kCoarse cells averaged, centred on the fine
+// strip's rows (the seam row stays the middle one) and aligned with its
+// blocks; NaN where most of a cell is.
+Strip coarsen(const Strip& fine)
+{
+    Strip s;
+    s.half = fine.half / kCoarse;
+    s.cols = fine.cols / kCoarse;
+    s.blockCols = fine.blockCols / kCoarse;
+    s.coreHalf = fine.coreHalf / kCoarse;
+    for (int i = 0; i < 2; ++i) {
+        s.g[i].assign(static_cast<size_t>(s.rows()) * s.cols, std::numeric_limits<float>::quiet_NaN());
+        for (int r = 0; r < s.rows(); ++r)
+            for (int c = 0; c < s.cols; ++c) {
+                double sum = 0;
+                int n = 0;
+                const int r0 = fine.half + (r - s.half) * kCoarse - kCoarse / 2;
+                for (int fr = std::max(r0, 0); fr < std::min(r0 + kCoarse, fine.rows()); ++fr)
+                    for (int fc = c * kCoarse; fc < (c + 1) * kCoarse; ++fc) {
+                        const float v = fine.g[i][static_cast<size_t>(fr) * fine.cols + fc];
+                        if (!std::isnan(v))
+                            sum += v, ++n;
+                    }
+                if (2 * n > kCoarse * kCoarse)
+                    s.g[i][static_cast<size_t>(r) * s.cols + c] = static_cast<float>(sum / n);
+            }
+    }
+    return s;
+}
+
 // One block's measured offset of lens 1 against lens 0.
 struct Block {
+    int frame = 0;           // which of the frames
     int index = 0;           // azimuth block, 0..kBlocks-1
     double s[2] = {0, 0};    // lens 1's best match: (azimuth, angle off lens 0's axis), deg
     double info[3] = {0, 0, 0}; // how sharply the match peaks: xx, xy, yy, 1/deg^2
@@ -133,19 +193,21 @@ double blockNcc(const Strip& s, int b, int dx, int dy, double* tex = nullptr)
 {
     double sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
     int n = 0;
-    for (int r = kStripHalf - kCoreHalf; r <= kStripHalf + kCoreHalf; ++r) {
-        const float* a = &s.g[0][static_cast<size_t>(r) * kCols];
-        const float* q = &s.g[1][static_cast<size_t>(r + dy) * kCols];
-        for (int c = b * kBlockCols; c < (b + 1) * kBlockCols; ++c) {
-            const float x = a[c], y = q[(c + dx + kCols) % kCols];
+    for (int r = s.half - s.coreHalf; r <= s.half + s.coreHalf; ++r) {
+        if (r + dy < 0 || r + dy >= s.rows())
+            continue;
+        const float* a = &s.g[0][static_cast<size_t>(r) * s.cols];
+        const float* q = &s.g[1][static_cast<size_t>(r + dy) * s.cols];
+        for (int c = b * s.blockCols; c < (b + 1) * s.blockCols; ++c) {
+            const float x = a[c], y = q[((c + dx) % s.cols + s.cols) % s.cols];
             if (std::isnan(x) || std::isnan(y))
                 continue;
             sx += x, sy += y, sxx += x * x, syy += y * y, sxy += x * y;
             ++n;
         }
     }
-    constexpr int kCore = (2 * kCoreHalf + 1) * kBlockCols;
-    if (n < kCore * 9 / 10)
+    const int core = (2 * s.coreHalf + 1) * s.blockCols;
+    if (n < core * 9 / 10)
         return -2.0;
     const double mx = sx / n, my = sy / n;
     const double vx = std::max(sxx / n - mx * mx, 0.0), vy = std::max(syy / n - my * my, 0.0);
@@ -156,66 +218,140 @@ double blockNcc(const Strip& s, int b, int dx, int dy, double* tex = nullptr)
     return (sxy / n - mx * my) / std::sqrt(vx * vy);
 }
 
-// The textured blocks of one frame, lens 1 searched over +-search cells.
-std::vector<Block> measureBlocks(const Strip& s, int search)
+// The best NCC of block b over (cx, cy) +-search cells, its offset from
+// (cx, cy) in `bx` / `by`, and every value in `grid` ((2 search + 1)^2, by dy
+// then dx).
+double searchBlock(const Strip& s, int b, int cx, int cy, int search, std::vector<double>& grid,
+                   int& bx, int& by)
 {
-    std::vector<Block> out;
     const int n = 2 * search + 1;
-    std::vector<double> grid(static_cast<size_t>(n) * n);
+    grid.assign(static_cast<size_t>(n) * n, -2.0);
+    double best = -2.0;
+    bx = by = 0;
+    for (int dy = -search; dy <= search; ++dy)
+        for (int dx = -search; dx <= search; ++dx) {
+            const double v = blockNcc(s, b, cx + dx, cy + dy);
+            grid[static_cast<size_t>(dy + search) * n + dx + search] = v;
+            if (v > best)
+                best = v, bx = dx, by = dy;
+        }
+    return best;
+}
+
+// What a frame's (or a set of frames') blocks gave.
+struct Measured {
+    std::vector<Block> blocks;
+    // Textured blocks the near search ran past and the wide one found no
+    // clear match for: the lenses are further apart there than the search
+    // reaches, or the picture repeats.
+    int beyondSearch = 0;
+};
+
+// The best match of block b on the coarse strip, in coarse cells; false when
+// there is no single clear one.
+bool coarseMatch(const Strip& coarse, int b, std::vector<double>& grid, int& cx, int& cy)
+{
+    const double best = searchBlock(coarse, b, 0, 0, kSearchCoarse, grid, cx, cy);
+    if (best < kMinCoarsePeak || std::abs(cx) == kSearchCoarse || std::abs(cy) == kSearchCoarse)
+        return false;
+    const int n = 2 * kSearchCoarse + 1;
+    double other = -2.0;
+    for (int dy = -kSearchCoarse; dy <= kSearchCoarse; ++dy)
+        for (int dx = -kSearchCoarse; dx <= kSearchCoarse; ++dx)
+            if (std::max(std::abs(dx - cx), std::abs(dy - cy)) >= 2)
+                other = std::max(other, grid[static_cast<size_t>(dy + kSearchCoarse) * n + dx + kSearchCoarse]);
+    return best - other >= kCoarseMargin;
+}
+
+// Block b's match on the strip over (cx, cy) +-search cells, refined to a
+// fraction of a cell; false when the best is on the search's edge (`edge`
+// set) or not a clean peak.
+bool fineMatch(const Strip& s, int b, int cx, int cy, int search, std::vector<double>& grid,
+               Block& blk, bool& edge)
+{
+    int bx = 0, by = 0;
+    const double best = searchBlock(s, b, cx, cy, search, grid, bx, by);
+    edge = false;
+    if (best < kMinPeak)
+        return false;
+    if (std::abs(bx) == search || std::abs(by) == search) {
+        edge = true;
+        return false;
+    }
+    const int n = 2 * search + 1;
+    const auto at = [&](int dx, int dy) {
+        return grid[static_cast<size_t>(by + dy + search) * n + bx + dx + search];
+    };
+    // Quadratic around the peak, per cell: gradient and curvature.
+    const double gx = 0.5 * (at(1, 0) - at(-1, 0)), gy = 0.5 * (at(0, 1) - at(0, -1));
+    const double hxx = at(1, 0) - 2 * best + at(-1, 0);
+    const double hyy = at(0, 1) - 2 * best + at(0, -1);
+    const double hxy = 0.25 * (at(1, 1) - at(1, -1) - at(-1, 1) + at(-1, -1));
+    const double det = hxx * hyy - hxy * hxy;
+    if (!(hxx < 0 && hyy < 0 && det > 0))
+        return false; // not a clean peak
+    const double ox = std::clamp(-(hyy * gx - hxy * gy) / det, -1.0, 1.0);
+    const double oy = std::clamp(-(hxx * gy - hxy * gx) / det, -1.0, 1.0);
+    blk.index = b;
+    blk.s[0] = (cx + bx + ox) * kCellDeg;
+    blk.s[1] = (cy + by + oy) * kCellDeg;
+    const double perDeg2 = 1.0 / (kCellDeg * kCellDeg);
+    blk.info[0] = -hxx * perDeg2;
+    blk.info[1] = -hxy * perDeg2;
+    blk.info[2] = -hyy * perDeg2;
+    return true;
+}
+
+// The textured blocks of one frame.
+Measured measureBlocks(const Strip& s)
+{
+    Measured out;
+    Strip coarse; // made the first time a block needs it
+    std::vector<double> grid;
     for (int b = 0; b < kBlocks; ++b) {
         double tex = 0;
         if (blockNcc(s, b, 0, 0, &tex) < -1.5 || tex < kMinTexture)
             continue;
-        int bx = 0, by = 0;
-        double best = -2.0;
-        for (int dy = -search; dy <= search; ++dy)
-            for (int dx = -search; dx <= search; ++dx) {
-                const double v = blockNcc(s, b, dx, dy);
-                grid[static_cast<size_t>(dy + search) * n + dx + search] = v;
-                if (v > best)
-                    best = v, bx = dx, by = dy;
-            }
-        if (best < kMinPeak || std::abs(bx) == search || std::abs(by) == search)
-            continue;
-        const auto at = [&](int dx, int dy) {
-            return grid[static_cast<size_t>(by + dy + search) * n + bx + dx + search];
-        };
-        // Quadratic around the peak, per cell: gradient and curvature.
-        const double gx = 0.5 * (at(1, 0) - at(-1, 0)), gy = 0.5 * (at(0, 1) - at(0, -1));
-        const double hxx = at(1, 0) - 2 * best + at(-1, 0);
-        const double hyy = at(0, 1) - 2 * best + at(0, -1);
-        const double hxy = 0.25 * (at(1, 1) - at(1, -1) - at(-1, 1) + at(-1, -1));
-        const double det = hxx * hyy - hxy * hxy;
-        if (!(hxx < 0 && hyy < 0 && det > 0))
-            continue; // not a clean peak
-        const double ox = std::clamp(-(hyy * gx - hxy * gy) / det, -1.0, 1.0);
-        const double oy = std::clamp(-(hxx * gy - hxy * gx) / det, -1.0, 1.0);
         Block blk;
-        blk.index = b;
-        blk.s[0] = (bx + ox) * kCellDeg;
-        blk.s[1] = (by + oy) * kCellDeg;
-        const double perDeg2 = 1.0 / (kCellDeg * kCellDeg);
-        blk.info[0] = -hxx * perDeg2;
-        blk.info[1] = -hxy * perDeg2;
-        blk.info[2] = -hyy * perDeg2;
-        out.push_back(blk);
+        bool edge = false;
+        if (fineMatch(s, b, 0, 0, kSearchNear, grid, blk, edge)) {
+            out.blocks.push_back(blk);
+            continue;
+        }
+        if (coarse.g[0].empty())
+            coarse = coarsen(s);
+        int cx = 0, cy = 0;
+        bool far = false;
+        if (coarseMatch(coarse, b, grid, cx, cy) &&
+            fineMatch(s, b, cx * kCoarse, cy * kCoarse, kSearchFine, grid, blk, far)) {
+            out.blocks.push_back(blk);
+            continue;
+        }
+        // Counted only where the near search ran into its edge: a match
+        // further out that the wide search couldn't pin down.
+        if (edge)
+            ++out.beyondSearch;
     }
     return out;
 }
 
 // Every frame's blocks at this stitch geometry, frames measured in parallel.
-std::vector<Block> measureAll(const FisheyeStitcher& st, const std::vector<SeamFrame>& frames,
-                              double scale, int search)
+Measured measureAll(const FisheyeStitcher& st, const std::vector<SeamFrame>& frames, double scale)
 {
-    std::vector<std::vector<Block>> per(frames.size());
+    std::vector<Measured> per(frames.size());
     std::vector<std::thread> pool;
     for (size_t i = 0; i < frames.size(); ++i)
-        pool.emplace_back([&, i] { per[i] = measureBlocks(sampleStrip(st, frames[i], scale), search); });
+        pool.emplace_back([&, i] { per[i] = measureBlocks(sampleStrip(st, frames[i], scale)); });
     for (auto& t : pool)
         t.join();
-    std::vector<Block> all;
-    for (auto& p : per)
-        all.insert(all.end(), p.begin(), p.end());
+    for (size_t i = 0; i < per.size(); ++i)
+        for (Block& blk : per[i].blocks)
+            blk.frame = static_cast<int>(i);
+    Measured all;
+    for (auto& p : per) {
+        all.blocks.insert(all.blocks.end(), p.blocks.begin(), p.blocks.end());
+        all.beyondSearch += p.beyondSearch;
+    }
     return all;
 }
 
@@ -334,6 +470,31 @@ double rmsOffset(const std::vector<Block>& blocks, const std::vector<BlockModel>
         ++n;
     }
     return n ? std::sqrt(sum / n) : -1.0;
+}
+
+// The RMS offset (as rmsOffset) of the blocks measured in both sets (the
+// same frame and azimuth), each set at its own geometry: `before` and
+// `after`; returns how many. The two geometries find partly different
+// blocks, so only the ones both found say whether a fit brought the lenses
+// closer.
+int pairedOffsets(const std::vector<Block>& a, const std::vector<BlockModel>& ma,
+                  const std::vector<Block>& b, const std::vector<BlockModel>& mb, double& before,
+                  double& after)
+{
+    std::vector<std::pair<const Block*, const Block*>> both;
+    for (const Block& x : a)
+        for (const Block& y : b)
+            if (x.frame == y.frame && x.index == y.index && wellConditioned(x) && wellConditioned(y))
+                both.emplace_back(&x, &y);
+    double sa = 0, sb = 0;
+    for (const auto& [x, y] : both) {
+        const double oa = offsetOf(ma[x->index], x->s), ob = offsetOf(mb[y->index], y->s);
+        sa += oa * oa, sb += ob * ob;
+    }
+    const double n = static_cast<double>(both.size());
+    before = n > 0 ? std::sqrt(sa / n) : -1.0;
+    after = n > 0 ? std::sqrt(sb / n) : -1.0;
+    return static_cast<int>(both.size());
 }
 
 // Solves A x = b for symmetric positive-definite A (Cholesky); false when
@@ -519,8 +680,8 @@ SeamAlignmentResult EstimateSeamAlignment(const CameraCalibration& cal, const St
     };
 
     Params x{};
-    std::vector<Block> blocks;
-    std::vector<BlockModel> models;
+    Measured m, first;
+    std::vector<BlockModel> models, firstModels;
     for (int round = 0; round <= kRounds; ++round) {
         if (cancelled())
             return out;
@@ -532,25 +693,27 @@ SeamAlignmentResult EstimateSeamAlignment(const CameraCalibration& cal, const St
             out.message = "stitch geometry failed";
             return out;
         }
-        // The first and the last round search wide, so the offsets before
-        // and after are measured alike (and as MeasureSeamOffset does).
-        const bool wide = round == 0 || round == kRounds;
-        blocks = measureAll(st, frames, scale, wide ? kSearchFirst : kSearchLater);
+        // Every round searches alike, so the offsets before and after are
+        // measured the same way (and as MeasureSeamOffset does).
+        m = measureAll(st, frames, scale);
         if (cancelled())
             return out;
         if (round == 0) {
-            out.offsetBeforeDeg = rmsOffset(blocks, models, nullptr);
-            if (static_cast<int>(blocks.size()) < kMinBlocks) {
+            out.offsetBeforeDeg = rmsOffset(m.blocks, models, nullptr);
+            out.beyondSearchBefore = m.beyondSearch;
+            first = m;
+            firstModels = models;
+            if (static_cast<int>(m.blocks.size()) < kMinBlocks) {
                 out.message = "no textured seam content";
                 return out;
             }
         }
         if (round == kRounds) {
-            out.offsetAfterDeg = rmsOffset(blocks, models, nullptr);
+            out.offsetAfterDeg = rmsOffset(m.blocks, models, nullptr);
             break;
         }
         double delta[kParams];
-        if (static_cast<int>(blocks.size()) < kMinBlocks || !fitRound(blocks, models, x, delta)) {
+        if (static_cast<int>(m.blocks.size()) < kMinBlocks || !fitRound(m.blocks, models, x, delta)) {
             out.message = "no textured seam content";
             return out;
         }
@@ -558,17 +721,36 @@ SeamAlignmentResult EstimateSeamAlignment(const CameraCalibration& cal, const St
             x[k] = std::clamp(x[k] + delta[k], -kBound[k], kBound[k]);
     }
 
-    out.ok = true;
-    out.correction = toCorrection(x);
     out.frames = static_cast<int>(frames.size());
-    out.blocks = static_cast<int>(blocks.size());
-    char buf[256];
-    std::snprintf(buf, sizeof buf,
-                  "lens 1 yaw %+.2f pitch %+.2f roll %+.2f deg, centre %+.3f %+.3f %%, "
-                  "scale %+.3f %% (seam offset %.2f -> %.2f deg, %d blocks)",
-                  x[0], x[1], x[2], x[3] * 0.1, x[4] * 0.1, x[5] * 0.1,
-                  out.offsetBeforeDeg, out.offsetAfterDeg, out.blocks);
-    out.message = buf;
+    out.blocks = static_cast<int>(m.blocks.size());
+    out.beyondSearch = m.beyondSearch;
+    char fit[160];
+    std::snprintf(fit, sizeof fit,
+                  "lens 1 yaw %+.2f pitch %+.2f roll %+.2f deg, centre %+.3f %+.3f %%, scale %+.3f %%",
+                  x[0], x[1], x[2], x[3] * 0.1, x[4] * 0.1, x[5] * 0.1);
+    char numbers[160];
+    std::snprintf(numbers, sizeof numbers,
+                  "seam offset %.2f -> %.2f deg, %d blocks, %d -> %d beyond the search",
+                  out.offsetBeforeDeg, out.offsetAfterDeg, out.blocks, out.beyondSearchBefore,
+                  out.beyondSearch);
+    double pairedBefore = 0, pairedAfter = 0;
+    const int paired =
+        pairedOffsets(first.blocks, firstModels, m.blocks, models, pairedBefore, pairedAfter);
+    out.ok = true;
+    // A fit that leaves the lenses no closer on the blocks found before and
+    // after it (it ends at a bound, or follows a few blocks that don't stand
+    // for the seam) is worse than none: the result is then no correction.
+    if (!(paired > 0 && pairedAfter < pairedBefore)) {
+        out.notImproved = true;
+        char why[96];
+        std::snprintf(why, sizeof why, "%.2f -> %.2f deg on the %d blocks found before and after",
+                      pairedBefore, pairedAfter, paired);
+        out.message = std::string("no correction: the fit (") + fit +
+                      ") doesn't line the lenses up better, " + why + " (" + numbers + ")";
+        return out;
+    }
+    out.correction = toCorrection(x);
+    out.message = std::string(fit) + " (" + numbers + ")";
     return out;
 }
 
@@ -590,7 +772,7 @@ double MeasureSeamOffset(const CameraCalibration& cal, const StitchParams& param
     if (!buildModels(cal, base, x, streamW, streamH, models))
         return -1.0;
     const double scale = static_cast<double>(frames[0].w) / streamW;
-    return rmsOffset(measureAll(st, frames, scale, kSearchFirst), models, nullptr);
+    return rmsOffset(measureAll(st, frames, scale).blocks, models, nullptr);
 }
 
 } // namespace orbiscore

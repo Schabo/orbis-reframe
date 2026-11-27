@@ -461,7 +461,9 @@ QString ClipMeasurements::stitchStatus(const ClipItem *c, QString *details) cons
     // while editing.
     if (details) {
         QStringList lines;
-        if (s == State::Done)
+        if (s == State::Done && seam == orbiscore::SeamCorrection{})
+            lines << tr("Seam: no correction lines the lenses up better than the lens model.");
+        else if (s == State::Done)
             lines << tr("Seam: the back lens turned by yaw %1°, pitch %2°, roll %3°; its centre "
                         "moved by %4 %, %5 %; lens scale %6 %.")
                          .arg(seam.lens1RotDeg[0], 0, 'f', 2)
