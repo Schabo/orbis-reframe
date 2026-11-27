@@ -242,8 +242,8 @@ ReframePanel::ReframePanel(QWidget *parent)
                              "Paste it on this clip or another one."));
     m_pasteKey = new QPushButton(tr("Paste keyframe"), m_keyRow);
     m_pasteKey->setObjectName(QStringLiteral("reframeKeyPasteButton"));
-    m_pasteKey->setToolTip(tr("Write the copied keyframe at the playhead: its view and "
-                              "easing. A keyframe within 0.15 s is replaced."));
+    m_pasteKey->setToolTip(tr("Write the copy at the playhead: its view and easing. "
+                              "A keyframe within 0.15 s is replaced."));
     keyLayout->addWidget(m_copyKey);
     keyLayout->addWidget(m_pasteKey);
     form()->addRow(tr("Keyframe"), m_keyRow);
