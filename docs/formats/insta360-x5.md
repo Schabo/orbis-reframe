@@ -735,9 +735,23 @@ trailing token `flag`. Each lens block ends in `w h lensType` (`10752 5376
   ("reserved" above) are its r⁴ thin-prism terms. They aren't zero: 0.0112 /
   0.0095 (lens 0) and −0.0084 / −0.0244 (lens 1) on `185106`, 0.028 on an
   X4 Air lens. At the seam's radius, thin prism shifts the picture by one
-  vector, which is the along / across cos-sin pattern below. Not yet
-  checked against the chart; on the X4 Air's seam, Gyroflow's reading
-  takes about a fifth off the error ([`insta360-x4.md`](insta360-x4.md)).
+  vector, which is the along / across cos-sin pattern below.
+  - **Scored on the chart** (2026-11-27; three X5 chart clips, bare
+    `_007`, `_008`, Premium `_009`; reprojection rms lens 0 / lens 1, board
+    poses free, the radial models exchanged as the app reads them):
+    ours 0.31 / 0.57 px (0.36 / 0.58 on `_009`), Gyroflow's as written
+    0.39–0.43 / 0.59–0.69 -- **worse**, on every clip. Its formula is
+    built for lens 0 only (Gyroflow's lens profile takes the first
+    lens), and there ours is the better fit; on the X4 Air's seam
+    Gyroflow's takes about a fifth off ([`insta360-x4.md`](insta360-x4.md)),
+    which the chart doesn't bear out on the X5. ⚠️ What the chart does
+    show: lens 1 fits much better with its y-odd terms negated (idx 17,
+    19, 21: 0.57 -> 0.36 / 0.41 / 0.47 on the three clips, lens 0 no
+    better) -- Gyroflow's `mirror_coefficients_y`, the coefficients of a
+    picture upside down, with no use of it found. Fitting only the odd
+    terms gets lens 1 to 0.24–0.28 px, only the centre to 0.28–0.33 (the
+    chart's free fit 0.20): most of lens 1's error is a shift-like term
+    the strings don't give as we read them.
 - The MEI forward model is implemented in `FisheyeProjection.cpp` and
   `fisheye_stitch_common.glsl`: `x = Xs/(Zs+xi)`, then distortion (radial
   k1–k4, tangential p1/p2, thin-prism s1–s4 in the OpenCV-omnidir form), then
