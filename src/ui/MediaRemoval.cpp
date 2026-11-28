@@ -62,4 +62,12 @@ QStringList takeFiles(const MediaItem &item, const camera::ClipMetadata *metadat
     return files;
 }
 
+QStringList takeFiles(const MediaItem &item, const MetadataReader &readMetadata)
+{
+    std::shared_ptr<const camera::ClipMetadata> metadata;
+    if (item.kind != MediaItem::Kind::Audio && readMetadata)
+        metadata = readMetadata(item.path);
+    return takeFiles(item, metadata.get());
+}
+
 } // namespace mediaremoval
