@@ -37,6 +37,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdio>
+#include <memory>
 #include <mutex>
 
 namespace {
@@ -177,36 +178,48 @@ void testSidebarResize()
     CHECK(!handle->isVisible());
 }
 
-void testMediaTab()
-{
+struct MediaTabFixture {
     QTemporaryDir tmp;
-    const QString a = tmp.path() + QStringLiteral("/DCIM");
-    const QString b = tmp.path() + QStringLiteral("/Music");
-    QDir().mkpath(a);
-    QDir().mkpath(b);
-    const QString clip2 = a + QStringLiteral("/VID_2.insv");
-    const QString clip1 = a + QStringLiteral("/VID_1.insv");
-    const QString phone = a + QStringLiteral("/phone.mp4");
-    const QString song = b + QStringLiteral("/song.mp3");
-    const QString gone = b + QStringLiteral("/gone.wav");
-    for (const QString &f : {clip1, clip2, phone, song})
-        writeFile(f);
-
+    QString a, b, clip1, clip2, phone, song, gone;
     MediaPool pool;
-    // Added out of order: the list sorts by folder, then name.
-    pool.add({song, MediaItem::Kind::Audio, 185000});
-    pool.add({clip2, MediaItem::Kind::Clip360, 42000, 2880, 2880, 29.97});
-    pool.add({gone, MediaItem::Kind::Audio, 1000});
-    pool.add({clip1, MediaItem::Kind::Clip360, 61000, 3840, 3840, 29.97});
-    pool.add({phone, MediaItem::Kind::Video, 9000, 1080, 1920, 30.0});
-    CHECK(!pool.add({clip1, MediaItem::Kind::Clip360, 1}));  // already there
-    CHECK(pool.item(gone) && pool.item(gone)->missing);
-    CHECK(pool.item(song) && !pool.item(song)->missing);
+    std::unique_ptr<MediaPoolPanel> panel;
+    MediaPoolList *list = nullptr;
 
-    MediaPoolPanel panel(&pool);
+    MediaTabFixture()
+    {
+        a = tmp.path() + QStringLiteral("/DCIM");
+        b = tmp.path() + QStringLiteral("/Music");
+        QDir().mkpath(a);
+        QDir().mkpath(b);
+        clip2 = a + QStringLiteral("/VID_2.insv");
+        clip1 = a + QStringLiteral("/VID_1.insv");
+        phone = a + QStringLiteral("/phone.mp4");
+        song = b + QStringLiteral("/song.mp3");
+        gone = b + QStringLiteral("/gone.wav");
+        for (const QString &file : {clip1, clip2, phone, song})
+            writeFile(file);
+    }
+};
+
+void testMediaTabRows(MediaTabFixture &f)
+{
+    MediaPool &pool = f.pool;
+    // Added out of order: the list sorts by folder, then name.
+    pool.add({f.song, MediaItem::Kind::Audio, 185000});
+    pool.add({f.clip2, MediaItem::Kind::Clip360, 42000, 2880, 2880, 29.97});
+    pool.add({f.gone, MediaItem::Kind::Audio, 1000});
+    pool.add({f.clip1, MediaItem::Kind::Clip360, 61000, 3840, 3840, 29.97});
+    pool.add({f.phone, MediaItem::Kind::Video, 9000, 1080, 1920, 30.0});
+    CHECK(!pool.add({f.clip1, MediaItem::Kind::Clip360, 1})); // already there
+    CHECK(pool.item(f.gone) && pool.item(f.gone)->missing);
+    CHECK(pool.item(f.song) && !pool.item(f.song)->missing);
+
+    f.panel = std::make_unique<MediaPoolPanel>(&pool);
+    MediaPoolPanel &panel = *f.panel;
     panel.resize(300, 500);
     panel.show();
     MediaPoolList *list = panel.list();
+    f.list = list;
     CHECK(list->objectName() == QStringLiteral("mediaPoolList"));
     CHECK(find<QToolButton>(&panel, "mediaImportFilesButton"));
     CHECK(find<QToolButton>(&panel, "mediaImportFolderButton"));
@@ -232,29 +245,44 @@ void testMediaTab()
     QTreeWidgetItem *goneRow = row(list, QStringLiteral("gone.wav"));
     CHECK(goneRow && goneRow->data(0, MediaPoolPanel::MissingRole).toBool());
     CHECK(goneRow && !(goneRow->flags() & Qt::ItemIsDragEnabled));
+}
 
+void testMediaTabFolders(MediaTabFixture &f)
+{
+    MediaPool &pool = f.pool;
+    MediaPoolList *list = f.list;
     // Folders open and close on a click, and stay so through a rebuild.
     QTreeWidgetItem *music = list->topLevelItem(1);
     emit list->itemClicked(music, 0);
     CHECK(!music->isExpanded());
-    pool.add({b + QStringLiteral("/new.flac"), MediaItem::Kind::Audio, 1000});
+    pool.add({f.b + QStringLiteral("/new.flac"), MediaItem::Kind::Audio, 1000});
     CHECK(!list->topLevelItem(1)->isExpanded());
     emit list->itemClicked(list->topLevelItem(1), 0);
     CHECK(list->topLevelItem(1)->isExpanded());
+}
 
+void testMediaTabInUse(MediaTabFixture &f)
+{
+    MediaPoolPanel &panel = *f.panel;
+    MediaPoolList *list = f.list;
     // In use: marked, and can't be removed.
-    panel.setInUse({clip1});
+    panel.setInUse({f.clip1});
     CHECK(row(list, QStringLiteral("VID_1.insv"))->data(0, MediaPoolPanel::InUseRole).toBool());
     CHECK(!row(list, QStringLiteral("VID_2.insv"))->data(0, MediaPoolPanel::InUseRole).toBool());
     auto *remove = find<QAction>(&panel, "mediaRemoveAction");
     auto *add = find<QAction>(&panel, "mediaAddToTimelineAction");
     if (!remove || !add)
         return;
-    panel.selectPaths({clip1, clip2});
-    CHECK(panel.selectedPaths() == (QStringList{clip1, clip2}));
+    panel.selectPaths({f.clip1, f.clip2});
+    CHECK(panel.selectedPaths() == (QStringList{f.clip1, f.clip2}));
     CHECK(!remove->isEnabled());
     CHECK(add->isEnabled());
+}
 
+void testMediaTabFileActions(MediaTabFixture &f)
+{
+    MediaPoolPanel &panel = *f.panel;
+    MediaPool &pool = f.pool;
     // The files themselves: not for one in use, nor one that isn't on the
     // disk; a free selection offers both, and the panel only asks.
     auto *trash = find<QAction>(&panel, "mediaMoveToTrashAction");
@@ -264,59 +292,137 @@ void testMediaTab()
     CHECK(trash->text() == QStringLiteral("Move to trash"));
     CHECK(wipe->text() == QStringLiteral("Delete permanently"));
     // The selection still has the in-use clip1.
-    panel.selectPaths({clip1, clip2});
+    panel.selectPaths({f.clip1, f.clip2});
     CHECK(!trash->isEnabled() && !wipe->isEnabled());
     // A missing file in the selection blocks both.
-    panel.selectPaths({gone, clip2});
+    panel.selectPaths({f.gone, f.clip2});
     CHECK(!trash->isEnabled() && !wipe->isEnabled());
-    panel.selectPaths({gone});
+    panel.selectPaths({f.gone});
     CHECK(!trash->isEnabled() && !wipe->isEnabled());
-    panel.selectPaths({clip2, song});
+    panel.selectPaths({f.clip2, f.song});
     CHECK(trash->isEnabled() && wipe->isEnabled());
     QSignalSpy trashSpy(&panel, &MediaPoolPanel::moveToTrashRequested);
     QSignalSpy wipeSpy(&panel, &MediaPoolPanel::deletePermanentlyRequested);
     trash->trigger();
     CHECK(trashSpy.size() == 1 &&
-          trashSpy.first().first().toStringList() == (QStringList{clip2, song}));
+          trashSpy.first().first().toStringList() == (QStringList{f.clip2, f.song}));
     wipe->trigger();
     CHECK(wipeSpy.size() == 1 &&
-          wipeSpy.first().first().toStringList() == (QStringList{clip2, song}));
-    CHECK(pool.contains(clip2) && pool.contains(song)); // the panel didn't touch them
+          wipeSpy.first().first().toStringList() == (QStringList{f.clip2, f.song}));
+    CHECK(pool.contains(f.clip2) && pool.contains(f.song)); // the panel didn't touch them
+}
 
+void testMediaTabShortcuts(MediaTabFixture &f)
+{
+    MediaPoolPanel &panel = *f.panel;
+    MediaPool &pool = f.pool;
+    MediaPoolList *list = f.list;
+    auto *trash = find<QAction>(&panel, "mediaMoveToTrashAction");
+    auto *wipe = find<QAction>(&panel, "mediaDeletePermanentlyAction");
+    if (!trash || !wipe)
+        return;
+    QSignalSpy trashSpy(&panel, &MediaPoolPanel::moveToTrashRequested);
+    QSignalSpy wipeSpy(&panel, &MediaPoolPanel::deletePermanentlyRequested);
+    // Shift+Delete asks for the trash, Ctrl+Shift+Delete for a permanent
+    // delete. Both act on the focused view.
+    CHECK(trash->shortcut() == QKeySequence(Qt::SHIFT | Qt::Key_Delete));
+    CHECK(wipe->shortcut() == QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Delete));
+    CHECK(trash->shortcutContext() == Qt::WidgetShortcut);
+    CHECK(wipe->shortcutContext() == Qt::WidgetShortcut);
+    panel.activateWindow();
+    CHECK(QTest::qWaitForWindowActive(&panel));
+    list->setFocus();
+    CHECK(list->hasFocus());
+    trashSpy.clear();
+    wipeSpy.clear();
+    QTest::keyClick(list, Qt::Key_Delete, Qt::ShiftModifier);
+    CHECK(trashSpy.size() == 1 &&
+          trashSpy.first().first().toStringList() == (QStringList{f.clip2, f.song}));
+    CHECK(wipeSpy.isEmpty());
+    QTest::keyClick(list, Qt::Key_Delete, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(wipeSpy.size() == 1 &&
+          wipeSpy.first().first().toStringList() == (QStringList{f.clip2, f.song}));
+    CHECK(trashSpy.size() == 1);
+    CHECK(pool.contains(f.clip2) && pool.contains(f.song) && QFile::exists(f.clip2) &&
+          QFile::exists(f.song)); // the panel only asks
+
+    // An in-use file blocks both shortcuts.
+    panel.selectPaths({f.clip1, f.clip2});
+    CHECK(!trash->isEnabled() && !wipe->isEnabled());
+    trashSpy.clear();
+    wipeSpy.clear();
+    list->setFocus();
+    QTest::keyClick(list, Qt::Key_Delete, Qt::ShiftModifier);
+    QTest::keyClick(list, Qt::Key_Delete, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(trashSpy.isEmpty() && wipeSpy.isEmpty());
+
+    // Another widget's focus: the views' shortcuts stay quiet.
+    panel.selectPaths({f.clip2, f.song});
+    CHECK(trash->isEnabled() && wipe->isEnabled());
+    auto *import = find<QToolButton>(&panel, "mediaImportFilesButton");
+    if (import) {
+        import->setFocus();
+        CHECK(import->hasFocus());
+        trashSpy.clear();
+        wipeSpy.clear();
+        QTest::keyClick(import, Qt::Key_Delete, Qt::ShiftModifier);
+        QTest::keyClick(import, Qt::Key_Delete, Qt::ControlModifier | Qt::ShiftModifier);
+        CHECK(trashSpy.isEmpty() && wipeSpy.isEmpty());
+        list->setFocus();
+    }
+}
+
+void testMediaTabLocate(MediaTabFixture &f)
+{
+    MediaPoolPanel &panel = *f.panel;
+    MediaPoolList *list = f.list;
     // Locate file…: only for one missing file; double-clicking a missing
     // file asks for it too, instead of adding it.
     auto *locate = find<QAction>(&panel, "mediaLocateAction");
     if (!locate)
         return;
     QSignalSpy locateSpy(&panel, &MediaPoolPanel::locateRequested);
-    panel.selectPaths({clip2});
+    panel.selectPaths({f.clip2});
     CHECK(!locate->isEnabled());
-    panel.selectPaths({gone, clip2});
+    panel.selectPaths({f.gone, f.clip2});
     CHECK(!locate->isEnabled());
-    panel.selectPaths({gone});
+    panel.selectPaths({f.gone});
     CHECK(locate->isEnabled());
     locate->trigger();
-    CHECK(locateSpy.size() == 1 && locateSpy.first().first().toString() == gone);
+    CHECK(locateSpy.size() == 1 && locateSpy.first().first().toString() == f.gone);
     {
         QSignalSpy addSpy(&panel, &MediaPoolPanel::addToTimelineRequested);
         emit list->itemDoubleClicked(row(list, QStringLiteral("gone.wav")), 0);
         CHECK(locateSpy.size() == 2 && addSpy.isEmpty());
     }
+}
 
+void testMediaTabDragOut(MediaTabFixture &f)
+{
+    MediaPoolPanel &panel = *f.panel;
+    MediaPoolList *list = f.list;
     // Drag out: the files as URLs, missing ones left out.
-    panel.selectPaths({clip2, gone});
+    panel.selectPaths({f.clip2, f.gone});
     {
         QList<QTreeWidgetItem *> items = list->selectedItems();
         const QMimeData *mime = list->model()->mimeData(list->selectionModel()->selectedIndexes());
         CHECK(items.size() == 2);
-        CHECK(mime && mime->urls() == QList<QUrl>{QUrl::fromLocalFile(clip2)});
+        CHECK(mime && mime->urls() == QList<QUrl>{QUrl::fromLocalFile(f.clip2)});
         delete mime;
     }
+}
 
+void testMediaTabAddToTimeline(MediaTabFixture &f)
+{
+    MediaPoolPanel &panel = *f.panel;
+    MediaPoolList *list = f.list;
     // Add to timeline: the selected files that are there.
+    auto *add = find<QAction>(&panel, "mediaAddToTimelineAction");
+    if (!add)
+        return;
     QSignalSpy addSpy(&panel, &MediaPoolPanel::addToTimelineRequested);
     add->trigger();
-    CHECK(addSpy.size() == 1 && addSpy.first().first().toStringList() == QStringList{clip2});
+    CHECK(addSpy.size() == 1 && addSpy.first().first().toStringList() == QStringList{f.clip2});
     // A double-click on a row does the same, and so does Enter; a plain click
     // only selects it, even here, where Qt reports one click as an activation.
     {
@@ -333,20 +439,34 @@ void testMediaTab()
         // The keypad's Enter, which always comes with Qt::KeypadModifier.
         QTest::keyClick(list, Qt::Key_Enter, Qt::KeypadModifier);
         CHECK(addSpy.size() == 4);
-        panel.selectPaths({clip2, gone}); // as the section above left them
+        panel.selectPaths({f.clip2, f.gone}); // as the section above left them
     }
+}
 
+void testMediaTabRemove(MediaTabFixture &f)
+{
+    MediaPoolPanel &panel = *f.panel;
+    MediaPool &pool = f.pool;
+    MediaPoolList *list = f.list;
     // Remove: gone from the pool and the list; the selection stays on the rest.
+    auto *remove = find<QAction>(&panel, "mediaRemoveAction");
+    if (!remove)
+        return;
     remove->trigger();
-    CHECK(!pool.contains(clip2) && !pool.contains(gone));
+    CHECK(!pool.contains(f.clip2) && !pool.contains(f.gone));
     CHECK(!row(list, QStringLiteral("VID_2.insv")));
+}
 
+void testMediaTabDrops(MediaTabFixture &f)
+{
+    MediaPoolPanel &panel = *f.panel;
+    MediaPoolList *list = f.list;
     // Drops from outside: known files and folders, nothing else.
     QSignalSpy dropSpy(&panel, &MediaPoolPanel::filesDropped);
     {
         QMimeData mime;
-        mime.setUrls({QUrl::fromLocalFile(song), QUrl::fromLocalFile(b),
-                      QUrl::fromLocalFile(tmp.path() + QStringLiteral("/notes.txt"))});
+        mime.setUrls({QUrl::fromLocalFile(f.song), QUrl::fromLocalFile(f.b),
+                      QUrl::fromLocalFile(f.tmp.path() + QStringLiteral("/notes.txt"))});
         const QPoint at = list->viewport()->rect().center();
         QDragEnterEvent enter(at, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
         QApplication::sendEvent(list->viewport(), &enter);
@@ -354,16 +474,21 @@ void testMediaTab()
         QDropEvent drop(QPointF(at), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
         QApplication::sendEvent(list->viewport(), &drop);
         CHECK(dropSpy.size() == 1 &&
-              dropSpy.first().first().toStringList() == (QStringList{song, b}));
+              dropSpy.first().first().toStringList() == (QStringList{f.song, f.b}));
     }
     {
         QMimeData mime;
-        mime.setUrls({QUrl::fromLocalFile(tmp.path() + QStringLiteral("/notes.txt"))});
+        mime.setUrls({QUrl::fromLocalFile(f.tmp.path() + QStringLiteral("/notes.txt"))});
         QDragEnterEvent enter(QPoint(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
         QApplication::sendEvent(list->viewport(), &enter);
         CHECK(!enter.isAccepted());
     }
+}
 
+void testMediaTabThumbnails(MediaTabFixture &f)
+{
+    MediaPoolPanel &panel = *f.panel;
+    MediaPoolList *list = f.list;
     // Thumbnails from the provider, on a worker thread.
     panel.setThumbnailProvider([](const MediaItem &m, const QSize &size) {
         if (m.kind == MediaItem::Kind::Audio)
@@ -378,7 +503,13 @@ void testMediaTab()
             return r && !r->data(0, MediaPoolPanel::ThumbnailRole).value<QImage>().isNull();
         },
         5000));
+}
 
+void testMediaTabMode(MediaTabFixture &f)
+{
+    MediaPoolPanel &panel = *f.panel;
+    MediaPool &pool = f.pool;
+    MediaPoolList *list = f.list;
     // The recording mode from the provider, on a worker thread; asked for 360
     // clips only (VID_2 was removed above, the phone video isn't one).
     QSet<QString> askedMode;
@@ -410,7 +541,13 @@ void testMediaTab()
         QMutexLocker lock(&askedMx);
         CHECK(askedMode.isEmpty());
     }
+}
 
+void testMediaTabStatusAndEmpty(MediaTabFixture &f)
+{
+    MediaPoolPanel &panel = *f.panel;
+    MediaPool &pool = f.pool;
+    MediaPoolList *list = f.list;
     panel.setStatus(QStringLiteral("Adding 2 files…"));
     CHECK(find<QLabel>(&panel, "mediaPoolStatus")->isVisible());
     panel.setStatus(QString());
@@ -423,6 +560,24 @@ void testMediaTab()
     pool.clear();
     CHECK(list->topLevelItemCount() == 0);
     list->viewport()->repaint();
+}
+
+void testMediaTab()
+{
+    MediaTabFixture f;
+    testMediaTabRows(f);
+    testMediaTabFolders(f);
+    testMediaTabInUse(f);
+    testMediaTabFileActions(f);
+    testMediaTabShortcuts(f);
+    testMediaTabLocate(f);
+    testMediaTabDragOut(f);
+    testMediaTabAddToTimeline(f);
+    testMediaTabRemove(f);
+    testMediaTabDrops(f);
+    testMediaTabThumbnails(f);
+    testMediaTabMode(f);
+    testMediaTabStatusAndEmpty(f);
 }
 
 // The grid view and the views' Ctrl + wheel zoom: the same files flat, the
