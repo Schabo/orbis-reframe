@@ -261,6 +261,8 @@ void testMediaTab()
     auto *wipe = find<QAction>(&panel, "mediaDeletePermanentlyAction");
     if (!trash || !wipe)
         return;
+    CHECK(trash->text() == QStringLiteral("Move to trash"));
+    CHECK(wipe->text() == QStringLiteral("Delete permanently"));
     // The selection still has the in-use clip1.
     panel.selectPaths({clip1, clip2});
     CHECK(!trash->isEnabled() && !wipe->isEnabled());
