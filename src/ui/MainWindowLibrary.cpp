@@ -258,6 +258,7 @@ void MainWindow::showEditor()
 
 void MainWindow::setEditorActive(bool active)
 {
+    m_editorActive = active;
     if (!active) {
         setFullScreenView(false);
         leaveSource();
@@ -266,6 +267,7 @@ void MainWindow::setEditorActive(bool active)
         a->setEnabled(active);
     for (QShortcut *sc : std::as_const(m_editorShortcuts))
         sc->setEnabled(active);
+    updateDeleteShortcuts();
 }
 
 void MainWindow::updateCacheDirs(const QString &projectFile)

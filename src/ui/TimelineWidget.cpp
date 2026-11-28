@@ -20,6 +20,10 @@ TimelineWidget::TimelineWidget(QWidget *parent)
     : QWidget(parent)
 {
     setMouseTracking(true);
+    // A click here edits the timeline, so the keyboard must follow it: the
+    // Media tab and the library remove their own selection while they have
+    // the focus.
+    setFocusPolicy(Qt::ClickFocus);
     setContextMenuPolicy(Qt::DefaultContextMenu);
     // Takes the height it's given (the window's splitter); rows that don't
     // fit scroll under the ruler.
