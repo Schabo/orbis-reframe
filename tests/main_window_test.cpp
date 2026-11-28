@@ -81,6 +81,7 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QTreeWidget>
+#include <QWindow>
 
 #include <atomic>
 #include <clocale>
@@ -499,34 +500,52 @@ void testOpenTakeFile(const Ctx &c)
     CHECK(c.project->recheckMissingMedia().gone == QStringList{lead});
 }
 
-// The window keeps its size between starts. The first start uses 1280x760.
-// A close writes the size. A resize alone and a cancelled close write nothing.
-void testWindowGeometry(const Ctx &c)
-{
-    std::printf("  window size\n");
-    const auto storedGeometry = [] {
-        QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
-        settings.sync();
-        return settings.value(QStringLiteral("mainWindow/geometry")).toByteArray();
-    };
-    const auto clearGeometry = [] {
-        QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
-        settings.remove(QStringLiteral("mainWindow/geometry"));
-        settings.sync();
-    };
+struct WindowSettings {
+    QRect geometry;
+    bool maximized = false;
+};
 
-    // The first start has no saved size. The offscreen platform does not clamp
-    // resize() before the window is shown.
-    clearGeometry();
-    CHECK(storedGeometry().isEmpty());
+WindowSettings storedWindowSettings()
+{
+    QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
+    settings.sync();
+    return {settings.value(QStringLiteral("mainWindow/geometry")).toRect(),
+            settings.value(QStringLiteral("mainWindow/maximized"), false).toBool()};
+}
+
+void clearWindowSettings()
+{
+    QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
+    settings.remove(QStringLiteral("mainWindow/geometry"));
+    settings.remove(QStringLiteral("mainWindow/maximized"));
+    settings.sync();
+}
+
+// The order main.cpp uses: show the normal window, then apply the saved state.
+void startWindow(MainWindow &window)
+{
+    window.show();
+    window.restoreStartupWindowState();
+}
+
+// The first start has no saved size. The offscreen platform does not clamp
+// resize() before the window is shown.
+void testFirstStartSize()
+{
+    clearWindowSettings();
+    CHECK(!storedWindowSettings().geometry.isValid());
+    CHECK(!storedWindowSettings().maximized);
     {
         MainWindow w(nullptr, standIns());
         CHECK(w.size() == QSize(1280, 760));
-        CHECK(storedGeometry().isEmpty());
+        CHECK(!storedWindowSettings().geometry.isValid());
     }
-    CHECK(storedGeometry().isEmpty());
+    CHECK(!storedWindowSettings().geometry.isValid());
+}
 
-    // A close writes the size, and the next start restores it.
+// A close writes the size, and the next start restores it.
+void testNormalCloseRestoresSize()
+{
     QSize size;
     {
         MainWindow w(nullptr, standIns());
@@ -534,27 +553,39 @@ void testWindowGeometry(const Ctx &c)
         size = w.size();
         CHECK(w.close());
     }
-    const QByteArray saved = storedGeometry();
-    CHECK(!saved.isEmpty());
+    const WindowSettings saved = storedWindowSettings();
+    CHECK(saved.geometry.isValid());
+    CHECK(saved.geometry.size() == size);
+    CHECK(!saved.maximized);
     {
         MainWindow w(nullptr, standIns());
         CHECK(w.size() == size);
+        CHECK(!w.isMaximized());
     }
+}
 
-    // A resize alone writes nothing. The destructor sends no close event.
+// A resize alone writes nothing. The destructor sends no close event.
+void testResizeAloneWritesNothing()
+{
+    const WindowSettings saved = storedWindowSettings();
     {
         MainWindow w(nullptr, standIns());
-        CHECK(w.size() == size);
+        CHECK(w.size() == saved.geometry.size());
         w.resize(700, 600); // inside the offscreen platform's 800x800 screen
         QApplication::processEvents();
-        CHECK(storedGeometry() == saved);
+        CHECK(storedWindowSettings().geometry == saved.geometry);
+        CHECK(!storedWindowSettings().maximized);
     }
-    CHECK(storedGeometry() == saved);
+    CHECK(storedWindowSettings().geometry == saved.geometry);
+}
 
-    // Cancel on close keeps the saved size and the unsaved change.
+// Cancel on close keeps the saved size and the unsaved change.
+void testCancelKeepsSavedGeometry(const Ctx &c)
+{
+    const WindowSettings saved = storedWindowSettings();
     {
         MainWindow w(nullptr, standIns());
-        CHECK(w.size() == size);
+        CHECK(w.size() == saved.geometry.size());
         w.openProject(c.orp);
         auto *project = w.findChild<Project *>();
         QAction *addAudio = find<QAction>(&w, "addAudioTrackAction");
@@ -565,18 +596,128 @@ void testWindowGeometry(const Ctx &c)
         w.show();
         w.resize(760, 620); // a different size, which a close would save
         QApplication::processEvents();
-        const QByteArray beforeCancel = storedGeometry();
+        const WindowSettings beforeCancel = storedWindowSettings();
         answerMessageBox(QStringLiteral("Cancel"));
         CHECK(!w.close());
         CHECK(w.isVisible());
-        CHECK(storedGeometry() == beforeCancel);
+        CHECK(storedWindowSettings().geometry == beforeCancel.geometry);
+        CHECK(storedWindowSettings().maximized == beforeCancel.maximized);
     }
     // The destructor sends no close event either.
-    CHECK(storedGeometry() == saved);
+    CHECK(storedWindowSettings().geometry == saved.geometry);
+    CHECK(!storedWindowSettings().maximized);
     {
         MainWindow w(nullptr, standIns());
-        CHECK(w.size() == size);
+        CHECK(w.size() == saved.geometry.size());
     }
+}
+
+// A close in full screen does not make the next start open full screen.
+// It opens at the size from before full screen. The offscreen window's
+// minimum width is wider than its 800x800 screen, so relax it to take the
+// user's size.
+void testFullScreenCloseKeepsNormalSize()
+{
+    QSize normal;
+    {
+        MainWindow w(nullptr, standIns());
+        w.setMinimumSize(1, 1);
+        w.show();
+        QApplication::processEvents();
+        w.resize(760, 620); // inside the offscreen platform's 800x800 screen
+        QApplication::processEvents();
+        QTest::qWait(150); // the normal-geometry timer
+        normal = w.size();
+        CHECK(normal == QSize(760, 620));
+        w.showFullScreen();
+        QApplication::processEvents();
+        // Some offscreen platforms don't report the window going full screen.
+        if (!(w.windowState() & Qt::WindowFullScreen)) {
+            w.setWindowState(w.windowState() | Qt::WindowFullScreen);
+            QApplication::processEvents();
+        }
+        CHECK(w.windowState() & Qt::WindowFullScreen);
+        CHECK(w.close());
+    }
+    CHECK(storedWindowSettings().geometry.size() == normal);
+    CHECK(!storedWindowSettings().maximized);
+    {
+        MainWindow w(nullptr, standIns());
+        CHECK(!(w.windowState() & Qt::WindowFullScreen));
+        CHECK(w.size() == normal);
+    }
+}
+
+// A close while maximized keeps the size from before maximizing, so leaving
+// the maximized state returns there. The offscreen window's minimum width is
+// wider than its 800x800 screen, so relax it to take the user's size.
+void testMaximizedCloseKeepsNormalSize()
+{
+    const QSize maximizedSize(900, 700);
+    {
+        MainWindow w(nullptr, standIns());
+        w.setMinimumSize(1, 1);
+        w.show();
+        QApplication::processEvents();
+        w.resize(maximizedSize);
+        QApplication::processEvents();
+        QTest::qWait(150); // the normal-geometry timer
+        CHECK(w.size() == maximizedSize);
+        // A compositor's maximize request: the resize to the maximized size
+        // arrives before the window reports the maximized state.
+        w.windowHandle()->setWindowState(Qt::WindowMaximized);
+        QApplication::processEvents();
+        QTest::qWait(150); // let a transition resize reach the timer
+        CHECK(w.isMaximized());
+        CHECK(w.close());
+    }
+    CHECK(storedWindowSettings().geometry.size() == maximizedSize);
+    CHECK(storedWindowSettings().maximized);
+}
+
+// The restart after the maximized close opens maximized. De-maximizing
+// returns to the normal size. The normal close then keeps that size for the
+// next restart, which opens normal.
+void testNormalCloseAfterMaximizedRestart()
+{
+    const QSize maximizedSize(900, 700);
+    {
+        MainWindow w(nullptr, standIns());
+        // The saved state waits for the startup method, after show().
+        CHECK(!w.isMaximized());
+        w.setMinimumSize(1, 1);
+        startWindow(w);
+        CHECK(w.isMaximized());
+        w.showNormal();
+        QApplication::processEvents();
+        CHECK(!w.isMaximized());
+        CHECK(w.size() == maximizedSize);
+        CHECK(w.close());
+    }
+    CHECK(storedWindowSettings().geometry.size() == maximizedSize);
+    CHECK(!storedWindowSettings().maximized);
+    {
+        MainWindow w(nullptr, standIns());
+        w.setMinimumSize(1, 1);
+        startWindow(w);
+        CHECK(!w.isMaximized());
+        CHECK(w.size() == maximizedSize);
+    }
+}
+
+// The window keeps its normal size between starts. A close writes it, with
+// whether the window was maximized. A resize alone and a cancelled close
+// write nothing.
+void testWindowGeometry(const Ctx &c)
+{
+    std::printf("  window size\n");
+    testFirstStartSize();
+    testNormalCloseRestoresSize();
+    testResizeAloneWritesNothing();
+    testCancelKeepsSavedGeometry(c);
+    testFullScreenCloseKeepsNormalSize();
+    testMaximizedCloseKeepsNormalSize();
+    testNormalCloseAfterMaximizedRestart();
 }
 
 void testOpenClip(const Ctx &c)
