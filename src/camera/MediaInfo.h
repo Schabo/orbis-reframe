@@ -108,6 +108,11 @@ struct MediaInfo {
 
     // The camera's name for the resolution it was filmed at ("8K"), or "".
     std::string captureMode;
+    // A clip the camera stitched into an equi-angular cubemap
+    // (ClipMetadata::projection): each video stream a strip of three faces,
+    // the centre face this many px for 90 deg (ClipMetadata::cubeLayout).
+    // 0 for a fisheye clip.
+    int cubeFace = 0;
 };
 
 // Returns false with `err` set if the file can't be opened as media.

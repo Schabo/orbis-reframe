@@ -1535,6 +1535,8 @@ void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::p
     camera::MediaInfo info;
     CHECK(camera::ProbeMediaInfo(clip360.string(), info, err) && info.cameraClip &&
           info.proxyPath == clip->proxyPath);
+    // Media information shows the cube strips, not two fisheyes.
+    CHECK(info.captureMode == "5.6K" && info.cubeFace == 1344);
     // Stitched by the camera: the Stitching panel greys out for it.
     stitch::ClipProbe probe;
     CHECK(stitch::ProbeClip(clip360.string(), probe, err) && probe.camera_stitched &&

@@ -1330,6 +1330,37 @@ void testMediaInfoParts(SettingsSidebar &bar)
     panel->setNoClip();
 }
 
+// Media information on a clip the camera stitched into a cubemap (a GoPro
+// MAX's): two strips of three faces, not two fisheyes, and the sphere four
+// faces around, not twice a stream's width.
+void testMediaInfoCubemap(SettingsSidebar &bar)
+{
+    MediaInfoPanel *panel = bar.mediaInfo();
+    auto shows = [panel](const QString &text) {
+        for (const QLabel *l : panel->findChildren<QLabel *>())
+            if (l->text() == text)
+                return true;
+        return false;
+    };
+    camera::MediaInfo m;
+    m.path = "/c/GS012267.360";
+    m.durationMs = 64000;
+    camera::MediaVideoStream v;
+    v.width = 4096;
+    v.height = 1344;
+    v.fps = 25;
+    v.codec = "hevc";
+    m.video = {v, v};
+    m.cameraModel = "GoPro Max";
+    m.cameraClip = true;
+    m.captureMode = "5.6K";
+    m.cubeFace = 1344;
+    panel->setInfo(m);
+    CHECK(shows("5.6K 360°") && shows("2 × 4096×1344, three faces each") && shows("5376×2688"));
+    CHECK(!shows("2 × 4096×1344 fisheye") && !shows("8192×4096"));
+    panel->setNoClip();
+}
+
 // Media information on an Interval series of photos: summed up, not a row
 // per photo; the series' mode, lenses, rate and the time between photos;
 // photos gone since it was added counted; its first photo not there.
@@ -1445,6 +1476,7 @@ int main(int argc, char **argv)
     testMediaInfoProfile(bar);
     testMediaInfoParts(bar);
     testMediaInfoPhotoSeries(bar);
+    testMediaInfoCubemap(bar);
     testStabilizationNoHeading(bar);
     testProjectSettingsDialog();
 
