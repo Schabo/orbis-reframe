@@ -5,31 +5,24 @@
 #include <cmath>
 #include <cstring>
 
-// GoPro GPMF, as a Max writes it: see Gpmf.h for the framing and why two of
-// its details are stated at length. Everything here was checked against
-// MAX clips (docs/formats/gopro-max.md, *Telemetry*).
+// GoPro GPMF, by GoPro's documented framing (Gpmf.h). Checked against MAX
+// clips (docs/formats/gopro-max.md, *Telemetry*).
 
 namespace orbiscore {
 namespace {
 
+// A FourCC: GoPro's are printable ASCII.
 bool isTag(std::string_view s) {
     if (s.size() != 4)
         return false;
-    for (char c : s) {
-        const bool upper = c >= 'A' && c <= 'Z';
-        const bool digit = c >= '0' && c <= '9';
-        if (!upper && !digit)
+    for (char c : s)
+        if (c < 0x20 || c > 0x7e)
             return false;
-    }
     return true;
 }
 
 std::string_view tagAt(const uint8_t* d, size_t off) {
     return std::string_view(reinterpret_cast<const char*>(d + off), 4);
-}
-
-bool isTypeChar(char c) {
-    return std::string_view("cCsSLldfdFBJJqQnNgG").find(c) != std::string_view::npos;
 }
 
 uint16_t be16(const uint8_t* p) { return uint16_t(p[0]) << 8 | p[1]; }
@@ -39,30 +32,43 @@ uint64_t be64(const uint8_t* p) { return (uint64_t(be32(p)) << 32) | be32(p + 4)
 
 size_t pad4(size_t n) { return (n + 3) & ~size_t(3); }
 
-// One element of a payload, as a double: GPMF's numbers are big endian.
+// One element of a payload, as a double: GPMF's numbers are big endian. The
+// types are GoPro's: b B s S l L j J the integers, q and Q fixed point
+// (Q15.16, Q31.32), f d the floats.
 double element(std::string_view p, char type, size_t i) {
     const uint8_t* q = reinterpret_cast<const uint8_t*>(p.data());
+    const auto fits = [&](size_t w) { return i * w + w <= p.size(); };
     switch (type) {
+    case 'b':
+    case 'B':
+        if (!fits(1))
+            return 0;
+        return type == 'b' ? double(int8_t(q[i])) : double(q[i]);
     case 's':
     case 'S':
-        if (i * 2 + 2 > p.size())
+        if (!fits(2))
             return 0;
         return type == 's' ? double(int16_t(be16(q + i * 2))) : double(be16(q + i * 2));
     case 'l':
     case 'L':
-        if (i * 4 + 4 > p.size())
+        if (!fits(4))
             return 0;
         return type == 'l' ? double(int32_t(be32(q + i * 4))) : double(be32(q + i * 4));
-    case 'q':
-    case 'Q':
     case 'j':
     case 'J':
-        if (i * 8 + 8 > p.size())
+        if (!fits(8))
             return 0;
-        return type == 'q' || type == 'j' ? double(int64_t(be64(q + i * 8)))
-                                          : double(be64(q + i * 8));
+        return type == 'j' ? double(int64_t(be64(q + i * 8))) : double(be64(q + i * 8));
+    case 'q':
+        if (!fits(4))
+            return 0;
+        return double(int32_t(be32(q + i * 4))) / 65536.0;
+    case 'Q':
+        if (!fits(8))
+            return 0;
+        return double(int64_t(be64(q + i * 8))) / 4294967296.0;
     case 'f': {
-        if (i * 4 + 4 > p.size())
+        if (!fits(4))
             return 0;
         const uint32_t bits = be32(q + i * 4);
         float f;
@@ -70,7 +76,7 @@ double element(std::string_view p, char type, size_t i) {
         return f;
     }
     case 'd': {
-        if (i * 8 + 8 > p.size())
+        if (!fits(8))
             return 0;
         const uint64_t bits = be64(q + i * 8);
         double dd;
@@ -87,61 +93,56 @@ std::string text(std::string_view p) {
     return std::string(p.substr(0, z == std::string_view::npos ? p.size() : z));
 }
 
-// Walk the tags in [off, end), returning the offset reached. A struct's
-// declared size is an aggregate for the whole track, not for this buffer (a
-// 10 KB sample declares a 76 KB `DEVC`), so it is clamped to `end`.
-size_t walkRange(const uint8_t* d, size_t off, size_t end, const GpmfVisitor& visit, int depth) {
+// Walk the tags in [off, end), a buffer or one nest's payload. True when
+// the walk reached `end`; false when the visitor stopped it or a tag didn't
+// fit, which leaves the rest of that nest unread. Zero bytes where a tag
+// would start are padding to the end.
+bool walkRange(const uint8_t* d, size_t off, size_t end, const GpmfVisitor& visit, int depth) {
     constexpr int kMaxDepth = 16;
-    while (off + 8 <= end) {
-        const std::string_view tag = tagAt(d, off);
-        if (!isTag(tag))
-            return off;
-        const uint8_t* h = d + off + 4;
-
-        if (isTypeChar(char(h[0]))) {
-            const uint64_t per = h[1];
-            const uint64_t count = be16(h + 2);
-            const uint64_t total = per * (count ? count : 1);
-            const size_t next = off + 8 + pad4(size_t(total));
-            // A scalar only when its payload fits and another tag (or the end)
-            // follows it: that check is what separates a scalar from a struct
-            // whose payload happens to start with a type char.
-            if (total && off + 8 + total <= end && (next >= end || isTag(tagAt(d, next)))) {
-                GpmfEvent ev;
-                ev.tag = tag;
-                ev.type = char(h[0]);
-                ev.count = count;
-                ev.payload = std::string_view(reinterpret_cast<const char*>(d + off + 8),
-                                              size_t(total));
-                if (!visit(ev))
-                    return next;
-                off = next;
-                continue;
-            }
+    while (off < end) {
+        if (end - off < 8) {
+            for (; off < end; ++off)
+                if (d[off])
+                    return false;
+            return true;
         }
-
-        const uint32_t sz = be32(h);
-        if (sz && off + 12 <= end && isTag(tagAt(d, off + 8))) {
-            GpmfEvent ev;
-            ev.tag = tag;
-            ev.isStruct = true;
-            ev.depth = depth;
-            if (!visit(ev))
-                return off + 8;
-            if (depth < kMaxDepth)
-                walkRange(d, off + 8, std::min(off + size_t(sz) + 8, end), visit, depth + 1);
-            off += 8 + std::min<size_t>(sz, end - off - 8);
+        const std::string_view tag = tagAt(d, off);
+        if (tag == std::string_view("\0\0\0\0", 4)) {
+            off += 4;
             continue;
         }
-        return off;
+        if (!isTag(tag))
+            return false;
+        const uint8_t* h = d + off + 4;
+        const size_t total = size_t(h[1]) * be16(h + 2);
+        if (total > end - off - 8)
+            return false;
+        const size_t body = off + 8;
+
+        GpmfEvent ev;
+        ev.tag = tag;
+        ev.depth = depth;
+        if (h[0] == 0) {
+            ev.isStruct = true;
+            if (!visit(ev))
+                return false;
+            if (depth >= kMaxDepth || !walkRange(d, body, body + total, visit, depth + 1))
+                return false;
+        } else {
+            ev.type = char(h[0]);
+            ev.count = be16(h + 2);
+            ev.payload = std::string_view(reinterpret_cast<const char*>(d + body), total);
+            if (!visit(ev))
+                return false;
+        }
+        off = body + std::min(pad4(total), end - body);
     }
-    return end;
+    return true;
 }
 
-// Collects the streams of one sample. A `STRM` starts one: the streams nest
-// (the gyroscope sits inside the accelerometer's), and every field of a
-// stream comes before the stream nested in it, so starting a new one on entry
-// is what the layout asks for.
+// Collects the streams of one sample: each `STRM` nest is one, the streams
+// siblings in the sample's `DEVC`. A stream's tags end where the next
+// `STRM` (or the sample) starts.
 struct Collector {
     GpmfSample* out;
     GpmfStream cur;
@@ -197,12 +198,12 @@ struct Collector {
 bool WalkGpmf(const uint8_t* data, size_t size, const GpmfVisitor& visit) {
     if (!data || !size)
         return false;
-    return walkRange(data, 0, size, visit, 0) == size;
+    return walkRange(data, 0, size, visit, 0);
 }
 
 GpmfSample ParseGpmfSensorSample(const uint8_t* data, size_t size) {
     GpmfSample sample;
-    if (!data || size < 12)
+    if (!data || size < 8)
         return sample;
     Collector c{&sample, {}, false};
     // Forwarded, not moved: the collector keeps the stream it is filling, and
@@ -214,35 +215,22 @@ GpmfSample ParseGpmfSensorSample(const uint8_t* data, size_t size) {
 
 std::vector<GpmfSample> ParseGpmfSensorTrack(const uint8_t* data, size_t size) {
     std::vector<GpmfSample> samples;
-    if (!data || size < 12)
+    if (!data || size < 8)
         return samples;
-    // Where each sample starts. A reader that demuxes the track gets these for
-    // free (one packet each, with its PTS) and should call
-    // ParseGpmfSensorSample per packet; this is for a track pulled out in one
-    // go, which has nothing else to go on.
-    //
-    // The declared sizes can't do it: they are aggregates, so walking by size
-    // jumps clean over the following samples — a 10 KB sample declares a 76 KB
-    // `DEVC` holding a 67 KB `STRM`. What does mark a start is the sample's
-    // own shape: a `DEVC` whose payload opens with `DVID`.
-    std::vector<size_t> start;
-    for (size_t off = 0; off + 16 <= size; off += 4) {
-        if (tagAt(data, off) != "DEVC")
-            continue;
-        const uint32_t sz = be32(data + off + 4);
-        if (sz && tagAt(data, off + 8) == "DVID")
-            start.push_back(off);
-    }
-    for (size_t i = 0; i + 1 < start.size(); ++i) {
-        GpmfSample s = ParseGpmfSensorSample(data + start[i], start[i + 1] - start[i]);
-        if (!s.empty())
-            samples.push_back(std::move(s));
-    }
-    if (!start.empty()) {
-        GpmfSample s = ParseGpmfSensorSample(data + start.back(), size - start.back());
-        if (!s.empty())
-            samples.push_back(std::move(s));
-    }
+    // Each top-level DEVC is one sample: walk them by their sizes and parse
+    // each on its own.
+    walkRange(data, 0, size, [&](const GpmfEvent& e) {
+        if (e.depth != 0)
+            return true;
+        if (e.isStruct && e.tag == "DEVC") {
+            const size_t at = size_t(reinterpret_cast<const uint8_t*>(e.tag.data()) - data);
+            const size_t len = size_t(data[at + 5]) * be16(data + at + 6);
+            GpmfSample s = ParseGpmfSensorSample(data + at, 8 + len);
+            if (!s.empty())
+                samples.push_back(std::move(s));
+        }
+        return true;
+    }, 0);
     return samples;
 }
 

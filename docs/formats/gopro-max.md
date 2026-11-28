@@ -110,14 +110,14 @@ it is not used.
 ## 3. Telemetry
 
 - 📖 GPMF is a big-endian KLV tree: a FourCC, a type character, a one-byte
-  structure size, a two-byte repeat count, the payload padded to 4 bytes
-  (GoPro's GPMF documentation). ✅ Read that way the walk lands every tag's
-  end on the next one; the reading that takes the size as two little-endian
-  bytes agrees only while the count fits in a byte, and loses the gyroscope
-  (833 rows a sample): over 18 sensor-track blobs it lands 527 tag ends to
-  this reading's 829 (`orbiscore::WalkGpmf`, `orbis-core/gopro/Gpmf.h`).
-- ✅ A structure's declared size is the whole track's, not the sample's (a
-  10 KB sample declares a 76 KB `DEVC`): the parser clamps it.
+  structure size and a two-byte repeat count, then size × repeat payload
+  bytes padded to 4. Type 0 (null) is a nest: its payload is more KLV
+  (GoPro's GPMF documentation). ✅ Walked by those sizes, the telemetry
+  track and the settings block of all six files read to their exact ends
+  (`orbiscore::WalkGpmf`, `orbis-core/gopro/Gpmf.h`).
+- ✅ Each sample is one `DEVC`, and its streams are sibling `STRM`s in it.
+  The MAX writes one type that isn't in the documentation's list, `#`, on
+  `DISP`; the walk steps over it by its size.
 - ✅ One GPMF sample a `gpmd` packet, ~1.04 s each (63 for `GS012267.360`),
   each with fifteen streams by `STNM`: Accelerometer, Gyroscope,
   Magnetometer, CameraOrientation, ImageOrientation, Gravity Vector,

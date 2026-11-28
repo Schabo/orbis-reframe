@@ -12,32 +12,25 @@
 // *Telemetry*). No FFmpeg: the samples come from the caller
 // (camera::GoproReader demuxes them and lines them up with the video).
 //
-// The framing, as the Max writes it:
+// The framing is GoPro's (its GPMF documentation, *KLV Design*): every tag,
+// a nest included, is
 //
-//     tag(4) | type(1) | bytes_per_sample(1) | count(u16 BE) | payload
-//     tag(4) | size(u32 BE)                                    | nested tags
+//     tag(4) | type(1) | structure size(1) | repeat(u16 BE) | payload
 //
-// Two things about that are easy to get wrong and both bite on real files.
-// The count is 16-bit and its high byte shares the field a naive reader calls
-// `size` (u16 LE); the two readings agree while the count fits in 8 bits and
-// disagree on the gyroscope, which carries 833 rows per sample — mis-sized
-// there, a parser that validates payload ends stops walking and reports the
-// gyro once instead of once per sample. Measured over 18 sensor-track
-// blobs of the MAX clips: the `size:u16le x repeat:u8` reading lands each
-// tag's end on the following tag 527 times, this one 829 times.
-//
-// And a struct's declared size is an aggregate for the whole track, not for
-// the sample: a 10 KB sample declares a 76 KB `DEVC`. Struct sizes are
-// therefore clamped to the buffer, which is what the files ask for.
+// with size × repeat payload bytes, padded to a multiple of 4. Type 0 is a
+// nest: its payload is more tags. Every other type is a scalar of `repeat`
+// structures of `size` bytes, so the walk steps over a tag by its size
+// whether or not it knows the type.
 
 namespace orbiscore {
 
 // One tag of a GPMF buffer, as the walk finds it.
 struct GpmfEvent {
     std::string_view tag;
-    // A struct: `payload` is empty and its tags follow, at `depth` + 1. A
-    // scalar: `payload` is its bytes (unpadded), `count` its elements, `type`
-    // the GPMF type char, and values inside it are big endian.
+    // A nest (type 0): `payload` is empty and its tags follow, at `depth` + 1.
+    // A scalar: `payload` is its bytes (unpadded), `count` its repeat count
+    // (rows, for a sensor's data), `type` the GPMF type char, and values
+    // inside it are big endian.
     bool isStruct = false;
     int depth = 0;
     char type = 0;
@@ -45,13 +38,15 @@ struct GpmfEvent {
     std::string_view payload;
 };
 
-// Every tag of a GPMF buffer, in file order, structs descended into. Return
-// false to stop.
+// Every tag of a GPMF buffer, in file order, nests descended into. Return
+// false to stop. Returns true when the walk reached the buffer's end, false
+// when it stopped early: told to, or on a tag that doesn't fit its nest.
 using GpmfVisitor = std::function<bool(const GpmfEvent&)>;
 bool WalkGpmf(const uint8_t* data, size_t size, const GpmfVisitor& visit);
 
 // One sensor stream of one sample: the accelerometer, the gyroscope, the
-// magnetometer, and the rest. A sample carries eleven of them.
+// magnetometer, and the rest: one `STRM`, a sibling of the others in the
+// sample's `DEVC`.
 struct GpmfStream {
     std::string name;   // STNM: "Gyroscope", "Accelerometer", ...
     std::string unit;   // SIUN: "rad/s", "m/s^2"
@@ -81,8 +76,8 @@ using GpmfSample = std::vector<GpmfStream>;
 GpmfSample ParseGpmfSensorSample(const uint8_t* data, size_t size);
 
 // A whole track at once: the samples concatenated, as a reader that pulled
-// the track out of the container in one go has it. Split on the `DEVC` that
-// starts each sample.
+// the track out of the container in one go has it. Each top-level `DEVC` is
+// one sample.
 std::vector<GpmfSample> ParseGpmfSensorTrack(const uint8_t* data, size_t size);
 
 } // namespace orbiscore
