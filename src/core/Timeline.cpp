@@ -581,27 +581,45 @@ void Timeline::upsertClipReframeKey(int clipId, qint64 sourceMs, ReframePose pos
         emit clipReframeChanged(c->id);
 }
 
-void Timeline::pasteClipReframeKey(int clipId, qint64 sourceMs, const ReframeKey &key, int pane)
-{
-    pasteClipReframeKeys(clipId, sourceMs, {key}, pane);
-}
-
-void Timeline::pasteClipReframeKeys(int clipId, qint64 baseSourceMs, const QVector<ReframeKey> &keys,
-                                    int pane)
+int Timeline::pasteClipReframeKeys(int clipId, qint64 baseSourceMs, const QVector<ReframeKey> &keys,
+                                   int pane)
 {
     ClipItem *c = mutableClipById(clipId);
     if (!c || c->flat || keys.isEmpty())
-        return;
+        return 0;
     // The earliest key lands at the base; the rest keep their distance from it.
     QVector<ReframeKey> sorted = keys;
     std::sort(sorted.begin(), sorted.end(),
               [](const ReframeKey &a, const ReframeKey &b) { return a.timeMs < b.timeMs; });
     const qint64 firstMs = sorted.first().timeMs;
+    QList<ReframeKey> pasted;
+    int dropped = 0;
+    for (const ReframeKey &key : sorted) {
+        const qint64 target = baseSourceMs + (key.timeMs - firstMs);
+        if (target < c->trimInMs || target > c->trimOutMs) {
+            ++dropped;
+            continue;
+        }
+        pasted.push_back({target, key.pose, key.ease});
+    }
+    if (pasted.isEmpty())
+        return dropped;
+    // Remove the keys at the pasted positions first, so the block keeps its
+    // own spacing even when two of its keys are less than 0.15 s apart.
     ReframeTrack &track = c->paneTrack(pane);
-    for (const ReframeKey &key : sorted)
-        track.setKey(baseSourceMs + (key.timeMs - firstMs), key.pose, key.ease,
-                     ClipItem::kReframeDeleteSnapMs);
+    const QList<ReframeKey> original = track.keys();
+    QList<qint64> replaced;
+    for (const ReframeKey &was : original)
+        for (const ReframeKey &key : pasted)
+            if (std::llabs(was.timeMs - key.timeMs) <= ClipItem::kReframeDeleteSnapMs) {
+                replaced.push_back(was.timeMs);
+                break;
+            }
+    track.removeTimes(replaced);
+    for (const ReframeKey &key : pasted)
+        track.setKey(key.timeMs, key.pose, key.ease, 0);
     emit clipReframeChanged(c->id);
+    return dropped;
 }
 
 void Timeline::removeClipReframeKeyNear(int clipId, qint64 sourceMs, int pane)

@@ -103,11 +103,11 @@ class QTimer;
 //   keysDeleteRequested / trackClipKeysDeleteRequested. The clip menu's
 //   "Copy keyframes" -> keysCopyRequested; the selection stays. Its
 //   "Paste keyframes" -> keysPasteRequested when a block was copied and the
-//   playhead is in the clip. A right click on a diamond copies that keyframe
-//   (reframeKeyCopyRequested). A main clip without any keys is labelled with
-//   a hollow diamond (and says why in its tooltip) -- it exports a static
-//   forward view. The lane stops short of the clip's ends, which stay trim
-//   handles.
+//   playhead is in the clip. A right click on a diamond opens the clip menu
+//   with Copy keyframe as one of its entries. A main clip without any keys is
+//   labelled with a hollow diamond (and says why in its tooltip) -- it
+//   exports a static forward view. The lane stops short of the clip's ends,
+//   which stay trim handles.
 //   Zoom: Ctrl+wheel (around the pointer) or zoomIn / zoomOut / zoomToFit;
 //   the wheel or the scrollbar under the tracks pans.
 //   Height: whatever the window gives it; rows that don't fit scroll up and
@@ -137,6 +137,7 @@ public:
         qint64 trimOutMs = 0;
         qint64 sourceDurationMs = 0;
         bool missing = false;
+        bool flat = false; // a flat video: it cannot hold reframe keys
         QVector<qint64> keySourceMs; // reframe key times, in the clip's source time
         // The highlight marks it shows, in the clip's source time: dots on
         // the clip's top edge, placed and clicked like keys. `own`: the

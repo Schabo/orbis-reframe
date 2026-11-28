@@ -858,40 +858,39 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         return;
     }
 
-    // A reframe keyframe's diamond: copy it. An overlay clip's look keys
-    // have no reframe view to copy, so their clip menu follows.
-    if (const KeyHit k = keyAt(e->pos()); k.index >= 0 && k.row >= 0) {
-        const Clip &clip = m_rows[k.row].clip;
-        const int clipId = clip.id;
-        const qint64 sourceMs = clip.keySourceMs[k.index];
-        // Copies: selecting the clip may hand the widget new clips.
-        emit clipSelected(clipId);
-        QAction *copy = menu.addAction(tr("Copy keyframe"));
-        copy->setObjectName(QStringLiteral("keyframeCopyAction"));
-        if (menu.exec(e->globalPos()) == copy)
-            emit reframeKeyCopyRequested(clipId, sourceMs);
-        return;
-    }
-
+    // A reframe keyframe's diamond opens the clip menu, with Copy keyframe
+    // as an entry. An overlay clip's look keys have no reframe view to copy,
+    // so their clip menu follows.
     if (h.kind == Hit::MainClip) {
         emit clipSelected(m_rows[h.row].clip.id);
         const Row &r = m_rows[h.row];
         const qint64 splitSrc = r.clip.trimInMs + std::llround((atMs - r.startMs) * r.clip.speed);
-        // The keys selected in its lane, first: what a right-click on them
-        // is most likely for. Then a copied block, which pastes at the
-        // playhead when it is inside this clip.
+        const KeyHit keyHit = keyAt(e->pos());
+        const bool onDiamond = keyHit.index >= 0 && keyHit.row == h.row && !keyHit.mark;
+        const qint64 diamondSourceMs = onDiamond ? r.clip.keySourceMs[keyHit.index] : 0;
+        // The keys selected in its lane come first, unless the click is on a
+        // diamond outside the selection: then Copy keyframe leads. Then a
+        // copied block, which pastes at the playhead when it is inside this
+        // clip.
         const bool selectionHere = keySelectionClipId() == r.clip.id;
+        const bool diamondInSelection =
+            onDiamond && selectionHere && m_keySel.keys.contains(diamondSourceMs);
         const bool playheadInClip = m_playheadMs >= r.startMs && m_playheadMs < r.startMs + r.durMs;
         const qint64 playheadSrc =
             r.clip.trimInMs + std::llround((m_playheadMs - r.startMs) * r.clip.speed);
+        QAction *copyKeyframe = nullptr;
         QAction *copyKeys = nullptr;
         QAction *pasteKeys = nullptr;
         QAction *deleteKeys = nullptr;
+        if (onDiamond && !diamondInSelection) {
+            copyKeyframe = menu.addAction(tr("Copy keyframe"));
+            copyKeyframe->setObjectName(QStringLiteral("keyframeCopyAction"));
+        }
         if (selectionHere) {
             copyKeys = menu.addAction(tr("Copy keyframes (%1)").arg(m_keySel.keys.size()));
             copyKeys->setObjectName(QStringLiteral("keysCopyAction"));
         }
-        if (m_copiedKeys > 0 && playheadInClip) {
+        if (m_copiedKeys > 0 && playheadInClip && !r.clip.flat) {
             pasteKeys = menu.addAction(tr("Paste keyframes (%1)").arg(m_copiedKeys));
             pasteKeys->setObjectName(QStringLiteral("keysPasteAction"));
         }
@@ -899,7 +898,11 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
             deleteKeys = menu.addAction(tr("Delete keyframes (%1)").arg(m_keySel.keys.size()));
             deleteKeys->setObjectName(QStringLiteral("keysDeleteAction"));
         }
-        if (copyKeys || pasteKeys || deleteKeys)
+        if (onDiamond && diamondInSelection) {
+            copyKeyframe = menu.addAction(tr("Copy keyframe"));
+            copyKeyframe->setObjectName(QStringLiteral("keyframeCopyAction"));
+        }
+        if (copyKeyframe || copyKeys || pasteKeys || deleteKeys)
             menu.addSeparator();
         QAction *split = menu.addAction(tr("Split here"));
         split->setEnabled(splitSrc > r.clip.trimInMs + kMinTrimMs
@@ -953,7 +956,9 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         QAction *chosen = menu.exec(e->globalPos());
         if (!chosen)
             return;
-        if (pasteKeys && chosen == pasteKeys)
+        if (copyKeyframe && chosen == copyKeyframe)
+            emit reframeKeyCopyRequested(r.clip.id, diamondSourceMs);
+        else if (pasteKeys && chosen == pasteKeys)
             emit keysPasteRequested(r.clip.id, playheadSrc);
         else if (copyKeys && chosen == copyKeys)
             emit keysCopyRequested(r.clip.id, m_keySel.keys);

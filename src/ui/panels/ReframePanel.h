@@ -76,9 +76,10 @@ public:
     // keys). Does not emit easeEdited.
     void setEase(bool available, keytrack::Ease ease);
 
-    // The Keyframe row: a key is at the playhead (Copy keyframe is live), a
-    // key was copied (Paste keyframe is live). Does not emit.
-    void setKeyframeActions(bool atKeyframe, bool canPaste);
+    // The Keyframe row: a key is at the playhead (Copy keyframe is live), and
+    // how many keys were copied (Paste keyframe / Paste keyframes (N)). Does
+    // not emit.
+    void setKeyframeActions(bool atKeyframe, int copiedCount);
 
     // The clip's split layout, which names its panes, and the active pane
     // (0-based). Do not emit.
@@ -128,11 +129,11 @@ private:
     ReframePose m_pose; // the pose shown: an edit changes only its own field
     QComboBox *m_ease = nullptr;
     bool m_easeAvailable = false;
-    QWidget *m_keyRow = nullptr; // Copy keyframe / Paste keyframe
+    QWidget *m_keyRow = nullptr; // Copy keyframe / Paste keyframe or keyframes
     QPushButton *m_copyKey = nullptr;
     QPushButton *m_pasteKey = nullptr;
-    bool m_atKeyframe = false;  // a key is at the playhead
-    bool m_canPasteKey = false; // a key was copied
+    bool m_atKeyframe = false; // a key is at the playhead
+    int m_copiedKeyCount = 0;  // in the reframe keyframe block
     QPushButton *m_track = nullptr;
     QLabel *m_trackUnavailable = nullptr;
     QString m_trackUnavailableReason;

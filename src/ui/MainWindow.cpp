@@ -1007,10 +1007,10 @@ void MainWindow::connectReframe()
         if (!c || c->flat)
             return;
         const ReframeTrack &track = c->paneTrack(paneOf(*c));
+        const QList<qint64> times = track.keyTimes();
         QVector<ReframeKey> copied;
         for (const qint64 ms : sourceMs) {
-            const int i =
-                keytrack::indexNear(track.keys(), ms, ClipItem::kReframeDeleteSnapMs);
+            const int i = times.indexOf(ms);
             if (i >= 0)
                 copied.push_back(track.keys()[i]);
         }
@@ -1023,7 +1023,14 @@ void MainWindow::connectReframe()
         const ClipItem *c = m_timeline->clipById(clipId);
         if (m_copiedReframeKeys.isEmpty() || !c || c->flat)
             return;
-        m_timeline->pasteClipReframeKeys(clipId, sourceMs, m_copiedReframeKeys, paneOf(*c));
+        const int dropped =
+            m_timeline->pasteClipReframeKeys(clipId, sourceMs, m_copiedReframeKeys, paneOf(*c));
+        if (dropped > 0)
+            m_editToolbar->showNotice(
+                dropped == 1
+                    ? tr("1 keyframe fell past the clip's end and wasn't pasted")
+                    : tr("%1 keyframes fell past the clip's end and weren't pasted").arg(dropped),
+                false);
     };
     connect(m_reframePanel, &ReframePanel::copyKeyframeRequested, this,
             [this, copyKey] { copyKey(m_clipId, m_lastPositionMs); });
@@ -1782,7 +1789,7 @@ void MainWindow::syncReframePanel()
     m_reframePanel->setEase(seg >= 0, seg >= 0 ? t->keys()[seg].ease : keytrack::Ease::Linear);
     const bool atKey =
         t && keytrack::indexNear(t->keys(), m_lastPositionMs, ClipItem::kReframeDeleteSnapMs) >= 0;
-    m_reframePanel->setKeyframeActions(atKey, !m_copiedReframeKeys.isEmpty());
+    m_reframePanel->setKeyframeActions(atKey, m_copiedReframeKeys.size());
     m_timelineWidget->setReframeKeysCopied(m_copiedReframeKeys.size());
 }
 
@@ -3116,6 +3123,7 @@ void MainWindow::refreshTimelineWidget()
         w.trimOutMs = c.trimOutMs;
         w.sourceDurationMs = c.sourceDurationMs;
         w.missing = c.mediaMissing;
+        w.flat = c.flat;
         for (const SourceGap &g : c.sourceGaps)
             w.gaps.push_back({g.fromMs, g.toMs, g.file});
         w.speed = c.speed;
