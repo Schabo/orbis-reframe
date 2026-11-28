@@ -562,9 +562,6 @@ private:
     // (and others found with it) replaces the old path in the pool and on
     // the timeline.
     void locateMedia(const QString &path);
-    // Show the first timeline clip that uses this media file: select it and
-    // put the playhead at its start.
-    void showMediaInTimeline(const QString &path);
     // Remove from file system, after asking: the pool items' files go to
     // the trash, or are deleted for good. A take loses all its files (its
     // companions, a split recording's parts, the camera's proxies and the

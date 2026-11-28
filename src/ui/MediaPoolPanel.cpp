@@ -845,13 +845,6 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     m_showAction = new QAction(tr("Show in &file manager"), this);
     m_showAction->setObjectName(QStringLiteral("mediaShowInFileManagerAction"));
     connect(m_showAction, &QAction::triggered, this, &MediaPoolPanel::showInFileManager);
-    m_showTimelineAction = new QAction(tr("Show in &timeline"), this);
-    m_showTimelineAction->setObjectName(QStringLiteral("mediaShowInTimelineAction"));
-    connect(m_showTimelineAction, &QAction::triggered, this, [this] {
-        const QStringList paths = selectedPaths();
-        if (m_showTimelineAction->isEnabled() && paths.size() == 1)
-            emit showInTimelineRequested(paths.first());
-    });
     m_removeAction = new QAction(theme::icon(QStringLiteral("x")), tr("&Remove from project"),
                                  this);
     m_removeAction->setObjectName(QStringLiteral("mediaRemoveAction"));
@@ -885,9 +878,8 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     fileSeparator->setSeparator(true);
     // The same actions on both views: context menu and keys (Delete)
     // follow whichever is shown.
-    const QList<QAction *> actions{m_addAction,     m_locateAction, m_showAction,
-                                   m_showTimelineAction, separator,   m_removeAction,
-                                   fileSeparator,  m_trashAction,  m_deleteAction};
+    const QList<QAction *> actions{m_addAction,     m_locateAction, m_showAction,   separator,
+                                   m_removeAction, fileSeparator,  m_trashAction, m_deleteAction};
     m_list->addActions(actions);
     m_list->setContextMenuPolicy(Qt::ActionsContextMenu);
     m_grid->addActions(actions);
@@ -1201,35 +1193,26 @@ void MediaPoolPanel::updateActions()
     const MediaItem *one = paths.size() == 1 ? m_pool->item(paths.first()) : nullptr;
     m_locateAction->setEnabled(one && one->missing);
     m_showAction->setEnabled(paths.size() == 1 && QFileInfo(paths.first()).absoluteDir().exists());
-    const bool oneInUse =
-        paths.size() == 1 && !anyMissing && m_inUse.contains(paths.first());
-    m_showTimelineAction->setEnabled(oneInUse);
-    m_showTimelineAction->setToolTip(
-        oneInUse ? tr("Show this file's clip on the timeline.")
-                 : tr("Only a file that is on the timeline and on the disk can be shown there."));
     m_removeAction->setEnabled(!paths.isEmpty() && !anyInUse);
     m_removeAction->setToolTip(anyInUse ? tr("Files used on the timeline can't be removed")
                                         : tr("Remove from the project's media. The files are "
                                              "not deleted."));
-    // A file that's gone can't be removed from the file system. A file the
-    // timeline uses can be asked for: MainWindow explains and offers to go to
-    // its clip.
-    const bool canRemoveFiles = !paths.isEmpty() && !anyMissing;
+    // A file that's gone can't be removed from the file system, and one the
+    // timeline uses stays.
+    const bool canRemoveFiles = !paths.isEmpty() && !anyInUse && !anyMissing;
     QString fileReason;
-    if (anyMissing)
+    if (anyInUse)
+        fileReason = tr("Files used on the timeline can't be removed.");
+    else if (anyMissing)
         fileReason = tr("Files that aren't on the disk can't be removed.");
-    const QString inUseReason =
-        tr("The selected file is on the timeline. Click to see how to go to its clip.");
     m_trashAction->setEnabled(canRemoveFiles);
     m_trashAction->setToolTip(
-        !canRemoveFiles ? fileReason
-        : anyInUse      ? inUseReason
-                        : tr("Move the selected files to the trash, where you can put them back."));
+        canRemoveFiles ? tr("Move the selected files to the trash, where you can put them back.")
+                       : fileReason);
     m_deleteAction->setEnabled(canRemoveFiles);
     m_deleteAction->setToolTip(
-        !canRemoveFiles ? fileReason
-        : anyInUse      ? inUseReason
-                        : tr("Delete the selected files for good. This can't be undone."));
+        canRemoveFiles ? tr("Delete the selected files for good. This can't be undone.")
+                       : fileReason);
 }
 
 QSize MediaPoolPanel::thumbnailRequestSize() const

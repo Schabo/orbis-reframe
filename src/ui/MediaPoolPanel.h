@@ -202,8 +202,6 @@ signals:
     // Files / folders dropped in from outside.
     void filesDropped(const QStringList &paths);
     void addToTimelineRequested(const QStringList &paths);
-    // Show the clip that uses this file on the timeline.
-    void showInTimelineRequested(const QString &path);
     // Locate file… on a missing file.
     void locateRequested(const QString &path);
     // Remove from file system: move the files of these items to the trash,
@@ -247,7 +245,6 @@ private:
     QAction *m_addAction = nullptr;
     QAction *m_locateAction = nullptr;
     QAction *m_showAction = nullptr;
-    QAction *m_showTimelineAction = nullptr;
     QAction *m_removeAction = nullptr;
     QAction *m_trashAction = nullptr;
     QAction *m_deleteAction = nullptr;
