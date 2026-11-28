@@ -279,6 +279,28 @@ void testMediaTabInUse(MediaTabFixture &f)
     CHECK(add->isEnabled());
 }
 
+void testMediaTabShowInTimeline(MediaTabFixture &f)
+{
+    MediaPoolPanel &panel = *f.panel;
+    auto *show = find<QAction>(&panel, "mediaShowInTimelineAction");
+    if (!show)
+        return;
+    // A free file isn't on the timeline.
+    panel.selectPaths({f.clip2});
+    CHECK(!show->isEnabled());
+    CHECK(show->toolTip().contains(QStringLiteral("timeline")));
+    // Nor is a missing one.
+    panel.selectPaths({f.gone});
+    CHECK(!show->isEnabled());
+    CHECK(show->toolTip().contains(QStringLiteral("timeline")));
+    // The in-use file is.
+    panel.selectPaths({f.clip1});
+    CHECK(show->isEnabled());
+    QSignalSpy showSpy(&panel, &MediaPoolPanel::showInTimelineRequested);
+    show->trigger();
+    CHECK(showSpy.size() == 1 && showSpy.first().first().toString() == f.clip1);
+}
+
 void testMediaTabFileActions(MediaTabFixture &f)
 {
     MediaPoolPanel &panel = *f.panel;
@@ -289,20 +311,33 @@ void testMediaTabFileActions(MediaTabFixture &f)
     auto *wipe = find<QAction>(&panel, "mediaDeletePermanentlyAction");
     if (!trash || !wipe)
         return;
-    CHECK(trash->text() == QStringLiteral("Move to trash"));
-    CHECK(wipe->text() == QStringLiteral("Delete permanently"));
-    // The selection still has the in-use clip1.
+    CHECK(trash->text() == QStringLiteral("Move to &trash"));
+    CHECK(wipe->text() == QStringLiteral("&Delete permanently"));
+    QSignalSpy trashSpy(&panel, &MediaPoolPanel::moveToTrashRequested);
+    QSignalSpy wipeSpy(&panel, &MediaPoolPanel::deletePermanentlyRequested);
+    // An in-use file keeps both actions enabled: MainWindow explains.
     panel.selectPaths({f.clip1, f.clip2});
-    CHECK(!trash->isEnabled() && !wipe->isEnabled());
+    CHECK(trash->isEnabled() && wipe->isEnabled());
+    CHECK(trash->toolTip().contains(QStringLiteral("timeline")));
+    CHECK(trash->toolTip().contains(QStringLiteral("clip")));
+    CHECK(wipe->toolTip().contains(QStringLiteral("timeline")));
+    CHECK(wipe->toolTip().contains(QStringLiteral("clip")));
+    trash->trigger();
+    CHECK(trashSpy.size() == 1 &&
+          trashSpy.first().first().toStringList() == (QStringList{f.clip1, f.clip2}));
+    wipe->trigger();
+    CHECK(wipeSpy.size() == 1 &&
+          wipeSpy.first().first().toStringList() == (QStringList{f.clip1, f.clip2}));
+    trashSpy.clear();
+    wipeSpy.clear();
     // A missing file in the selection blocks both.
     panel.selectPaths({f.gone, f.clip2});
     CHECK(!trash->isEnabled() && !wipe->isEnabled());
+    CHECK(wipe->toolTip().contains(QStringLiteral("disk")));
     panel.selectPaths({f.gone});
     CHECK(!trash->isEnabled() && !wipe->isEnabled());
     panel.selectPaths({f.clip2, f.song});
     CHECK(trash->isEnabled() && wipe->isEnabled());
-    QSignalSpy trashSpy(&panel, &MediaPoolPanel::moveToTrashRequested);
-    QSignalSpy wipeSpy(&panel, &MediaPoolPanel::deletePermanentlyRequested);
     trash->trigger();
     CHECK(trashSpy.size() == 1 &&
           trashSpy.first().first().toStringList() == (QStringList{f.clip2, f.song}));
@@ -346,15 +381,18 @@ void testMediaTabShortcuts(MediaTabFixture &f)
     CHECK(pool.contains(f.clip2) && pool.contains(f.song) && QFile::exists(f.clip2) &&
           QFile::exists(f.song)); // the panel only asks
 
-    // An in-use file blocks both shortcuts.
+    // An in-use file keeps both shortcuts: they ask for the explanation.
     panel.selectPaths({f.clip1, f.clip2});
-    CHECK(!trash->isEnabled() && !wipe->isEnabled());
+    CHECK(trash->isEnabled() && wipe->isEnabled());
     trashSpy.clear();
     wipeSpy.clear();
     list->setFocus();
     QTest::keyClick(list, Qt::Key_Delete, Qt::ShiftModifier);
+    CHECK(trashSpy.size() == 1 &&
+          trashSpy.first().first().toStringList() == (QStringList{f.clip1, f.clip2}));
     QTest::keyClick(list, Qt::Key_Delete, Qt::ControlModifier | Qt::ShiftModifier);
-    CHECK(trashSpy.isEmpty() && wipeSpy.isEmpty());
+    CHECK(wipeSpy.size() == 1 &&
+          wipeSpy.first().first().toStringList() == (QStringList{f.clip1, f.clip2}));
 
     // Another widget's focus: the views' shortcuts stay quiet.
     panel.selectPaths({f.clip2, f.song});
@@ -568,6 +606,7 @@ void testMediaTab()
     testMediaTabRows(f);
     testMediaTabFolders(f);
     testMediaTabInUse(f);
+    testMediaTabShowInTimeline(f);
     testMediaTabFileActions(f);
     testMediaTabShortcuts(f);
     testMediaTabLocate(f);
