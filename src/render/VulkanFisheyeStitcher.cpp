@@ -93,6 +93,12 @@ void packParams(const orbiscore::StitchGpuParams& p, int eqW, int eqH, ShaderPar
     sp.edge[1] = p.edgeEndFrac;
     sp.edge[2] = static_cast<float>(p.seamColourActive);
     sp.edge[3] = 0.0f;
+    // The camera's own cubemap (fisheye_stitch_common.glsl cubeActive /
+    // cubeSample): its strips' layout, and on.
+    sp.cube[0] = static_cast<float>(p.cubeCentre);
+    sp.cube[1] = static_cast<float>(p.cubeSide);
+    sp.cube[2] = static_cast<float>(p.cubeOverlap);
+    sp.cube[3] = static_cast<float>(p.eacCube);
     sp.dims[0] = p.fisheyeW;
     sp.dims[1] = p.fisheyeH;
     sp.dims[2] = eqW;

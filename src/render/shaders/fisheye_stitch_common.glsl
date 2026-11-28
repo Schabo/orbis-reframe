@@ -126,6 +126,10 @@ layout(std140, binding = 0) uniform Params {
     // uv and max uv (unbounded for a whole image).
     vec4 lensRect[2];
     vec4 lensBox[2];
+    // The camera's own equi-angular cubemap (orbiscore::StitchGpuParams::
+    // eacCube): its strips' centre face, side region and overlap in px
+    // (orbiscore::EacLayout), and w 1 = on (cubeActive).
+    vec4 cube;
 } P;
 
 // Lens i's colour at `uv` in its own picture (0..1 over fisheyeW x fisheyeH):
@@ -856,12 +860,66 @@ void seamStripPass(ivec2 gid)
 }
 #endif
 
+// The camera's own equi-angular cubemap (StitchGpuParams::eacCube, the
+// GoPro MAX): orbiscore::EacCubeStitcher's map, which says how it was
+// measured. Stream i is "lens" i, a dims.x x dims.y strip SIDE | CENTRE |
+// SIDE -- stream 0 LEFT | FRONT | RIGHT, stream 1 DOWN | BACK | TOP -- laid
+// out as P.cube says: the centre face, a side region holding a side face
+// (`span` px for 90 deg) split at the lens boundary with the `ov` px overlap
+// between its halves, cross-faded over that overlap.
+bool cubeActive() { return P.cube.w == 1.0; }
+
+vec3 cubeSample(vec3 d)
+{
+    // Stitch world (x right, y up, z back) -> the cube's (x right, y
+    // forward, z up).
+    vec3 p = vec3(d.x, -d.z, d.y);
+    vec3 a = abs(p);
+    float m = max(a.x, max(a.y, a.z));
+    vec3 e = atan(p / m) * (4.0 / PI);
+    float W = float(P.dims.x);
+    float centre = P.cube.x;
+    float side = P.cube.y;
+    float ov = P.cube.z;
+    float span = side - ov;
+    int s, region; // region 0 left, 1 centre, 2 right
+    float u, v;
+    if (a.x >= max(a.y, a.z)) {
+        s = 0;
+        if (p.x > 0.0) { region = 2; u = -e.y; v = -e.z; }
+        else           { region = 0; u = e.y;  v = -e.z; }
+    } else if (a.y >= a.z) {
+        region = 1;
+        if (p.y > 0.0) { s = 0; u = e.x; v = -e.z; }
+        else           { s = 1; u = e.z; v = -e.x; }
+    } else {
+        s = 1;
+        if (p.z > 0.0) { region = 2; u = e.y;  v = -e.x; }
+        else           { region = 0; u = -e.y; v = -e.x; }
+    }
+    float y = (v + 1.0) * 0.5;
+    if (region == 1)
+        return sampleLensIn(s, vec2((side + (u + 1.0) * 0.5 * centre) / W, y));
+    float x1 = (region == 0 ? 0.0 : side + centre) + (u + 1.0) * 0.5 * span;
+    // Over the overlap, centred on the boundary (EacCubeStitcher::configure).
+    float band = ov / span;
+    float alpha = clamp((band - u) / (2.0 * band), 0.0, 1.0);
+    vec3 c = vec3(0.0);
+    if (alpha > 0.0)
+        c += alpha * sampleLensIn(s, vec2(x1 / W, y));
+    if (alpha < 1.0)
+        c += (1.0 - alpha) * sampleLensIn(s, vec2((x1 + ov) / W, y));
+    return c;
+}
+
 // The stitched colour for `dir`, RGB in [0, 255] (unquantised); black outside
 // both imaged circles. Each lens's colour matched by the lens colour
 // (lensColourLog) and the seam colour blend (seamColourLog), both lenses to
 // the geometric mean of their colours.
 vec3 blendLenses(vec3 dir)
 {
+    if (cubeActive())
+        return cubeSample(dir);
     vec2 uv0, uv1;
     float w0, w1;
     vec3 local, veil;

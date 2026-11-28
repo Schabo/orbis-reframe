@@ -12,7 +12,7 @@ if(NOT SOURCE_DIR)
     message(FATAL_ERROR "usage: cmake -DSOURCE_DIR=<dir> -P check_layering.cmake")
 endif()
 
-set(format_dirs insta360 dji)
+set(format_dirs insta360 dji gopro)
 set(allowed
     "^<orbis-core/"
     "^<[a-z_]+>$"                    # the C++ standard library

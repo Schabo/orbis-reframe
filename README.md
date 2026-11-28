@@ -5,8 +5,8 @@ gyro stabilization and, above all, **reframing**. Reframing means steering a
 virtual camera through the sphere over time to get a normal flat video out of a
 360° recording. It opens Insta360 `.insv` clips directly: the **X5** is
 fully supported, the **X6**, **ONE X2** and **Antigravity A1** (a 360
-drone) experimentally, and the **DJI Avata 360** drone's `.OSV` clips
-experimentally too.
+drone) experimentally, and the **DJI Avata 360** drone's `.OSV` clips and
+the **GoPro MAX**'s `.360` clips experimentally too.
 
 [![The orbis-reframe editor: a reframed ride on a country road with a picture-in-picture inset, the Media sidebar on the left, the Picture in picture tab on the right, a player bar under the video and a timeline with video, camera mic, music and overlay tracks below](site/screenshot-1400.jpg)](site/screenshot-full.jpg)
 
@@ -79,6 +79,13 @@ where it pointed, and its GPS shows in titles and gauges. Lens calibration
 doesn't work on its clips, and it has no lens guards. The DJI Osmo 360
 family isn't supported yet.
 
+**GoPro MAX:** experimental -- 5.6K `.360` clips open, play, stabilize and
+export, from one contributor's camera. The camera stitches the picture
+itself, into a cubemap, so the Stitching panel has nothing to set; it is
+stabilized from the camera's gyro and accelerometer. Other modes and the
+MAX2 open untested, with a notice. A take the camera split into chapters
+opens as one clip. Its GPS isn't read yet, and its photos don't open.
+
 **Have another 360 camera?** Support for other Insta360, DJI and GoPro
 cameras is planned, and needs real footage to build on:
 [sample clips wanted](docs/formats/README.md#sample-clips-wanted).
@@ -135,8 +142,8 @@ no closed-source dependencies.
 **Import and playback**
 - Opens X5 `.insv` files directly, including every capture mode tested so far
   (8K, 5.7K/5.7K+, 5.7K 60, 4K 120); X6 (including its 10-bit I-Log and
-  Dolby Vision modes), ONE X2, Antigravity A1 and DJI Avata 360 clips
-  experimentally.
+  Dolby Vision modes), ONE X2, Antigravity A1, DJI Avata 360 and GoPro MAX
+  clips experimentally.
 - A recording the camera split over several files opens as one clip, its
   sound playing across the joins; if a file of it is missing, the rest
   plays.
@@ -285,7 +292,7 @@ no closed-source dependencies.
 - Three themes: Ember, Light and Neutral dark.
 
 Planned: more 360° cameras as sample clips come in (Insta360 X4 and X3, DJI
-Osmo 360, GoPro MAX), a second 360° clip as an inset, more effects, HDR
+Osmo 360, GoPro MAX2), a second 360° clip as an inset, more effects, HDR
 export and video noise removal. Further out: face and object blur. The
 [roadmap](docs/roadmap.md) has the details.
 
@@ -329,8 +336,9 @@ list and the pinned versions.
 ## Sources and thanks
 
 Everything about the cameras' file formats (Insta360 X5, X6, ONE X2,
-Antigravity A1, DJI Avata 360) was learned from **interoperability documentation,
-published research and camera-produced files**. No vendor's SDK or software
+Antigravity A1, DJI Avata 360, GoPro MAX) was learned from
+**interoperability documentation, published research and camera-produced
+files**. No vendor's SDK or software
 was ever disassembled. [`docs/formats/`](docs/formats/README.md) marks
 every fact with where it came from and how well it's verified. We're grateful
 to these projects and people:
@@ -357,6 +365,13 @@ to these projects and people:
   the [X5 online manual](https://onlinemanual.insta360.com/x5/en-us/operating-tutorials/storage/fileformat)
   (file naming, segmented recording) and Insta360 Studio, which we used as a
   visual reference for stitching and horizon leveling.
+- **GoPro**: the
+  [GPMF documentation](https://github.com/gopro/gpmf-parser/blob/main/README.md)
+  (the telemetry's framing, types and tags, and the MAX's orientation and
+  stabilization tags) and the MAX's published specifications.
+- **[FFmpeg](https://ffmpeg.org/)'s `v360` filter** (`input=gopromax`): its
+  stitch of a MAX clip was the reference picture the cube layout and the
+  cross-fade were measured against, its output used, not its code.
 - **TDK InvenSense**: the
   [ICM-40609-D datasheet](https://invensense.tdk.com/products/motion-tracking/6-axis/icm-40609-d/)
   for the IMU's full-scale ranges.
@@ -398,8 +413,9 @@ derived from [Feather](https://feathericons.com/) MIT).
 
 Insta360, Insta360 Studio, X5, X6 and ONE X2 are trademarks of Arashi
 Vision Inc.; Antigravity and A1 are trademarks of their owner; DJI and
-Avata are trademarks of SZ DJI Technology Co., Ltd. This project is not
-affiliated with or endorsed by Insta360, Antigravity or DJI.
+Avata are trademarks of SZ DJI Technology Co., Ltd.; GoPro and MAX are
+trademarks of GoPro, Inc. This project is not affiliated with or endorsed by
+Insta360, Antigravity, DJI or GoPro.
 
 ## License
 

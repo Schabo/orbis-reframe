@@ -9,6 +9,8 @@
 #include <orbis-core/stitch/BlurQuads.h>
 #include <orbis-core/insta360/Calibration.h>
 #include <orbis-core/dji/DjiMeta.h>
+#include <orbis-core/gopro/Gpmf.h>
+#include <orbis-core/stitch/EacCubeStitcher.h>
 #include <orbis-core/stitch/FisheyeProjection.h>
 #include <orbis-core/metadata/Gps.h>
 #include <orbis-core/Image.h>
@@ -25,6 +27,8 @@
 #include <orbis-core/stitch/SeamWindow.h>
 #include <orbis-core/Smooth.h>
 #include <orbis-core/Ycbcr.h>
+#include <cstring>
+
 #include "support/CommaLocale.h"
 #include "support/TestTrailer.h"
 
@@ -3675,6 +3679,334 @@ void testGpsAlignedByAcceleration()
 
 // The Y'CbCr -> R'G'B' rows the viewport converts lens planes with must match
 // the stitch's Vulkan ycbcr conversion for every matrix, range and depth.
+// GoPro's GPMF framing, and the one detail of it a plausible reader gets
+// wrong: the element count is 16-bit and its high byte shares the field a
+// naive reader calls `size` (u16 LE), so the two readings agree while the
+// count fits in 8 bits and disagree on the gyroscope — which carries 833 rows
+// a sample, and is the stream the whole feature needs. A reader that then
+// validates its payload ends stops walking and reports the gyro once per track
+// instead of once per sample. Measured over 18 sensor-track blobs of the MAX
+// clips: 527 tag boundaries land where they should for the naive reading,
+// 829 for this one (docs/formats/gopro-max.md, *Telemetry*). The numbers are
+// GS012267's first sensor sample.
+namespace {
+
+// Big endian, as GPMF writes its numbers.
+Bytes beOf(uint64_t v, int n) {
+    Bytes b;
+    for (int i = n - 1; i >= 0; --i)
+        b.u8(uint8_t(v >> (8 * i)));
+    return b;
+}
+Bytes be64b(uint64_t v) { return beOf(v, 8); }
+Bytes be32b(uint32_t v) { return beOf(v, 4); }
+Bytes be16b(uint16_t v) { return beOf(v, 2); }
+Bytes f32b(float f) {
+    uint32_t bits;
+    std::memcpy(&bits, &f, 4);
+    return beOf(bits, 4);
+}
+Bytes gText(const char* s) {
+    Bytes b;
+    for (; *s; ++s)
+        b.u8(uint8_t(*s));
+    return b;
+}
+// `count` rows of three big-endian int16, each axis one greater than the last
+// so a wrong stride or byte order shows up.
+Bytes gRows(uint16_t count, int16_t base) {
+    Bytes b;
+    for (uint16_t i = 0; i < count; ++i)
+        for (int k = 0; k < 3; ++k)
+            b.raw(be16b(uint16_t(int16_t(base + k))).b);
+    return b;
+}
+
+// tag | type | bytes per sample | count (u16 BE) | payload, padded to 4.
+Bytes gScalar(const char* tag, char type, const Bytes& payload, uint16_t count = 1) {
+    Bytes b;
+    for (int i = 0; i < 4; ++i)
+        b.u8(uint8_t(tag[i]));
+    b.u8(uint8_t(type)).u8(uint8_t(payload.b.size() / (count ? count : 1)));
+    b.raw(be16b(count).b);
+    Bytes p = payload;
+    while (p.b.size() & 3)
+        p.b.push_back(0);
+    b.raw(p.b);
+    return b;
+}
+// A nest: tag | 0 | structure size | repeat (u16 BE) | nested tags, the
+// payload size × repeat bytes (GoPro's framing; the body is already a
+// multiple of 4, so either structure size describes it).
+Bytes gNest(const char* tag, const Bytes& body, uint8_t structSize = 1) {
+    Bytes b;
+    for (int i = 0; i < 4; ++i)
+        b.u8(uint8_t(tag[i]));
+    b.u8(0).u8(structSize);
+    b.raw(be16b(uint16_t(body.b.size() / structSize)).b);
+    b.raw(body.b);
+    return b;
+}
+Bytes gMtrx() {
+    const float m[9] = {0, -1, 0, 1, 0, 0, 0, 0, 1};
+    Bytes b;
+    for (int i = 0; i < 9; ++i)
+        b.raw(f32b(m[i]).b);
+    return b;
+}
+
+// One sensor sample: the accelerometer with its 209 rows and the gyroscope
+// with 833 (past what fits in a byte), each its own STRM in the DEVC, and
+// between them a tag of a type the parser doesn't know, which the walk steps
+// over by its size. The gyroscope's STRM states its size in 4-byte
+// structures, the others in bytes.
+Bytes gSensorSample() {
+    Bytes accBody;
+    accBody.raw(gScalar("STMP", 'J', be64b(170287)).b);
+    accBody.raw(gScalar("TSMP", 'L', be32b(209)).b);
+    accBody.raw(gScalar("STNM", 'c', gText("Accelerometer")).b);
+    accBody.raw(gScalar("MTRX", 'f', gMtrx()).b);
+    accBody.raw(gScalar("SIUN", 'c', gText("m/s2")).b);
+    accBody.raw(gScalar("SCAL", 's', be16b(417)).b);
+    accBody.raw(gScalar("ACCL", 's', gRows(209, 3648), 209).b);
+
+    // Its payload opens like a tag header, which must not matter: the walk
+    // goes by the declared size.
+    Bytes odd;
+    odd.raw(gText("STRM").b).u8(0).u8(1).raw(be16b(4).b);
+    Bytes oddBody;
+    oddBody.raw(gScalar("STNM", 'c', gText("Odd")).b);
+    oddBody.raw(gScalar("ODDD", '#', odd, 1).b);
+
+    Bytes gyroBody;
+    gyroBody.raw(gScalar("STMP", 'J', be64b(171973)).b);
+    gyroBody.raw(gScalar("TSMP", 'L', be32b(833)).b);
+    gyroBody.raw(gScalar("STNM", 'c', gText("Gyroscope")).b);
+    gyroBody.raw(gScalar("MTRX", 'f', gMtrx()).b);
+    gyroBody.raw(gScalar("SIUN", 'c', gText("rad/s")).b);
+    gyroBody.raw(gScalar("SCAL", 's', be16b(939)).b);
+    gyroBody.raw(gScalar("GYRO", 's', gRows(833, 53), 833).b);
+
+    Bytes devcBody;
+    devcBody.raw(gScalar("DVID", 'L', be32b(1)).b);
+    devcBody.raw(gScalar("DVNM", 'c', gText("GoPro Max")).b);
+    devcBody.raw(gNest("STRM", accBody).b);
+    devcBody.raw(gNest("STRM", oddBody).b);
+    devcBody.raw(gNest("STRM", gyroBody, 4).b);
+    return gNest("DEVC", devcBody);
+}
+
+} // namespace
+
+void testGoproGpmf()
+{
+    const Bytes one = gSensorSample();
+    CHECK(orbiscore::WalkGpmf(one.b.data(), one.b.size(), [](const orbiscore::GpmfEvent&) {
+        return true;
+    }));
+    const auto sample = orbiscore::ParseGpmfSensorSample(one.b.data(), one.b.size());
+    CHECK(sample.size() == 3);
+    if (sample.size() == 3) {
+        const auto& acc = sample[0];
+        CHECK(acc.name == "Accelerometer" && acc.unit == "m/s2");
+        CHECK(acc.stmpUs == 170287 && acc.tsmp == 209 && acc.scal == 417);
+        CHECK(acc.dataTag == "ACCL" && acc.count == 209);
+        CHECK(acc.rowsI16().size() == 209 * 3);
+        CHECK(acc.rowsI16().size() >= 3 && acc.rowsI16()[0] == 3648 && acc.rowsI16()[1] == 3649 &&
+              acc.rowsI16()[2] == 3650);
+        CHECK(acc.hasMtrx && acc.mtrx[0] == 0.0 && acc.mtrx[1] == -1.0 && acc.mtrx[3] == 1.0 &&
+              acc.mtrx[4] == 0.0 && acc.mtrx[8] == 1.0);
+        CHECK(sample[1].name == "Odd" && sample[1].dataTag.empty());
+        // The repeat count is 16 bits: 833 rows, not the 65 of its low byte.
+        const auto& gyro = sample[2];
+        CHECK(gyro.name == "Gyroscope" && gyro.unit == "rad/s");
+        CHECK(gyro.stmpUs == 171973 && gyro.tsmp == 833 && gyro.scal == 939);
+        CHECK(gyro.dataTag == "GYRO" && gyro.count == 833);
+        CHECK(gyro.rowsI16().size() == 833 * 3);
+        CHECK(!gyro.rowsI16().empty() && gyro.rowsI16()[0] == 53);
+    }
+
+    // Two samples back to back, each a top-level DEVC.
+    Bytes two;
+    two.raw(one.b);
+    two.raw(one.b);
+    const auto track = orbiscore::ParseGpmfSensorTrack(two.b.data(), two.b.size());
+    CHECK(track.size() == 2);
+    CHECK(track.size() == 2 && track[0].size() == 3 && track[1].size() == 3);
+    CHECK(track.size() == 2 && track[1].size() == 3 && track[1][2].count == 833);
+
+    // A sample cut short: the second DEVC's size runs past the buffer, so the
+    // walk stops there and the first sample is all the track gives.
+    const Bytes cut{std::vector<uint8_t>(two.b.begin(), two.b.end() - 16)};
+    CHECK(!orbiscore::WalkGpmf(cut.b.data(), cut.b.size(), [](const orbiscore::GpmfEvent&) {
+        return true;
+    }));
+    CHECK(orbiscore::ParseGpmfSensorTrack(cut.b.data(), cut.b.size()).size() == 1);
+
+    // Not GPMF at all: empty, rather than a walk off into the buffer.
+    const Bytes junk = gText("AAAA");
+    CHECK(orbiscore::ParseGpmfSensorTrack(junk.b.data(), junk.b.size()).empty());
+    CHECK(orbiscore::ParseGpmfSensorSample(nullptr, 0).empty());
+}
+
+// The GoPro MAX's in-camera cubemap: the two strips' faces onto the sphere.
+// What this pins is the layout docs/formats/gopro-max.md measured on real
+// clips -- each strip is SIDE | CENTRE | SIDE (4096 = 1376 | 1344 | 1376),
+// one stream carries the front belt (FRONT/LEFT/RIGHT) and the other the
+// back belt (BACK/TOP/DOWN), DOWN/BACK/TOP stored turned, and each side face
+// cut at the lens boundary with the 64 px both lenses see between its
+// halves, cross-faded -- plus the face ids the seam metric reads back. All
+// synthetic, so it needs no clip; camera_test measures the real picture.
+void testEacCube()
+{
+    const int SW = 4096, SH = 1344; // the 5.6K layout
+    const int SIDE = 1376, CENTRE = 1344, SPAN = 1312, OVERLAP = 64;
+    const orbiscore::EacLayout L{CENTRE, SIDE, OVERLAP};
+    const int OW = 720, OH = 360; // 2 px a degree
+
+    {
+        orbiscore::EacCubeStitcher st;
+        CHECK(st.configure(SW, SH, L, OW, OH));
+        CHECK(st.outWidth() == OW && st.outHeight() == OH);
+        CHECK(st.centreWidth() == CENTRE && st.sideSpan() == SPAN && st.overlap() == OVERLAP);
+        // A layout the strip can't hold: widths that don't add up to it,
+        // no overlap, or an overlap as wide as the face.
+        orbiscore::EacCubeStitcher bad;
+        CHECK(!bad.configure(SW + 1, SH, L, OW, OH));
+        CHECK(!bad.configure(SW, SH, {CENTRE, SIDE + 1, OVERLAP}, OW, OH));
+        CHECK(!bad.configure(SW, SH, {CENTRE, SIDE, 0}, OW, OH));
+        CHECK(!bad.configure(SW, SH, {CENTRE, SIDE, SIDE / 2}, OW, OH));
+        // Another layout of the same strip is taken as given: the centre
+        // face where it says.
+        orbiscore::EacCubeStitcher other;
+        CHECK(other.configure(SW, SH, {1296, 1400, 80}, OW, OH));
+        CHECK(other.centreWidth() == 1296 && other.sideSpan() == 1320 && other.overlap() == 80);
+    }
+
+    // Each strip region a flat level, so a direction's level says which
+    // stream and region it was read from.
+    auto flat = [](orbiscore::Image& img, int left, int centre, int right) {
+        img.alloc(SW, SH);
+        for (int y = 0; y < SH; ++y)
+            for (int x = 0; x < SW; ++x) {
+                const int v = x < SIDE ? left : (x < SIDE + CENTRE ? centre : right);
+                uint8_t* p = &img.rgb[(size_t(y) * SW + x) * 3];
+                p[0] = p[1] = p[2] = uint8_t(v);
+            }
+    };
+    orbiscore::Image a, b;
+    flat(a, 20, 40, 60);
+    flat(b, 100, 120, 140);
+
+    orbiscore::EacCubeStitcher st;
+    CHECK(st.configure(SW, SH, L, OW, OH));
+    orbiscore::Image eq;
+    std::vector<int16_t> owner(size_t(OW) * OH);
+    st.renderEquirect(a, b, eq, owner.data());
+    CHECK(eq.w == OW && eq.h == OH);
+
+    auto at = [&](double lonDeg, double latDeg) {
+        int x = int(std::lround((lonDeg / 360.0 + 0.5) * OW - 0.5));
+        const int y = int(std::lround((0.5 - latDeg / 180.0) * OH - 0.5));
+        return size_t(y) * OW + size_t((x % OW + OW) % OW);
+    };
+    auto level = [&](double lonDeg, double latDeg) { return int(eq.rgb[at(lonDeg, latDeg) * 3]); };
+    auto face = [&](double lonDeg, double latDeg) { return int(owner[at(lonDeg, latDeg)]); };
+    using F = orbiscore::EacCubeStitcher;
+
+    // Stream 0 (a) carries LEFT | FRONT | RIGHT, stream 1 (b) DOWN | BACK |
+    // TOP: measured against FFmpeg's gopromax stitch.
+    CHECK(level(0, 0) == 40 && face(0, 0) == F::kFront);
+    CHECK(level(-90, 0) == 20 && face(-90, 0) == F::kLeft);
+    CHECK(level(90, 0) == 60 && face(90, 0) == F::kRight);
+    CHECK(level(180, 0) == 120 && face(180, 0) == F::kBack);
+    CHECK(level(0, -89) == 100 && face(0, -89) == F::kDown);
+    CHECK(level(0, 89) == 140 && face(0, 89) == F::kTop);
+    CHECK(face(44, 0) == F::kFront && face(46, 0) == F::kRight);
+
+    // The orientation of every face: a strip whose pixel says where in the
+    // strip it is (x in R/G, y in B, coarse), read back at a direction and
+    // compared with where the measured map puts that direction. Checked at
+    // the centre of each face and towards two of its edges.
+    auto coded = [](orbiscore::Image& img) {
+        img.alloc(SW, SH);
+        for (int y = 0; y < SH; ++y)
+            for (int x = 0; x < SW; ++x) {
+                uint8_t* p = &img.rgb[(size_t(y) * SW + x) * 3];
+                p[0] = uint8_t(x / 16);       // 0..255 along the strip
+                p[1] = uint8_t(x % 16 * 16);
+                p[2] = uint8_t(y * 255 / (SH - 1));
+            }
+    };
+    coded(a);
+    coded(b);
+    st.renderEquirect(a, b, eq, nullptr, /*blend=*/false);
+    auto stripX = [&](double lon, double lat) { return eq.rgb[at(lon, lat) * 3] * 16.0; };
+    auto stripY = [&](double lon, double lat) { return eq.rgb[at(lon, lat) * 3 + 2] / 255.0 * (SH - 1); };
+    // FRONT upright: lon runs with the strip's x, up is its first row.
+    CHECK(std::abs(stripX(0, 0) - (SIDE + CENTRE / 2.0)) < 24);
+    CHECK(stripX(30, 0) > stripX(-30, 0) + 400);
+    CHECK(stripY(0, 30) < stripY(0, -30) - 400);
+    // RIGHT runs on from FRONT towards the back; LEFT ends where FRONT starts.
+    CHECK(stripX(80, 0) < stripX(120, 0));
+    CHECK(stripX(-120, 0) < stripX(-80, 0) && stripX(-80, 0) < SIDE);
+    // BACK is turned: going up (towards TOP) runs along the strip's x, and
+    // lon runs down its rows.
+    CHECK(stripX(180, 30) > stripX(180, -30) + 400);
+    CHECK(std::abs(stripY(150, 0) - stripY(-150, 0)) > 400);
+
+    // The lens boundary at the middle of every side face: each half where
+    // the measured map puts it, the overlap between them. At lon 90 (RIGHT's
+    // middle) the hard cut reads the strip just before 2720 + 656 or just
+    // after 2720 + 720 -- never inside the overlap.
+    {
+        const double x89 = stripX(89, 0), x91 = stripX(91, 0);
+        CHECK(std::abs(x89 - (SIDE + CENTRE + SPAN / 2.0)) < 24);
+        CHECK(std::abs(x91 - (SIDE + CENTRE + SPAN / 2.0 + OVERLAP)) < 24);
+    }
+
+    // The cross-fade: a strip whose overlap holds 200 and is 0 elsewhere --
+    // the blend reads the overlap near each lens boundary, so the picture
+    // lifts there, peaks at the boundary, and nowhere on the front or back.
+    auto overlapOnly = [&](orbiscore::Image& img) {
+        img.alloc(SW, SH);
+        for (int y = 0; y < SH; ++y)
+            for (int x = 0; x < SW; ++x) {
+                const int lx = x < SIDE ? x : x - SIDE - CENTRE;
+                const bool inOv = (x < SIDE || x >= SIDE + CENTRE) && lx >= SPAN / 2 &&
+                                  lx < SPAN / 2 + OVERLAP;
+                uint8_t* p = &img.rgb[(size_t(y) * SW + x) * 3];
+                p[0] = p[1] = p[2] = inOv ? 200 : 0;
+            }
+    };
+    overlapOnly(a);
+    overlapOnly(b);
+    orbiscore::Image soft, hard;
+    st.renderEquirect(a, b, soft);
+    st.renderEquirect(a, b, hard, nullptr, /*blend=*/false);
+    auto lv = [&](const orbiscore::Image& img, double lon, double lat) {
+        return int(img.rgb[at(lon, lat) * 3]);
+    };
+    CHECK(lv(hard, 89, 0) == 0 && lv(hard, 91, 0) == 0); // hard cut: no overlap read
+    // The blend reads it: at the boundary each half reaches the overlap's
+    // edge (half its level), and a degree on one half is inside it. The fade
+    // spans the overlap, half of it (~2.2 deg) each side of the boundary:
+    // three degrees off it, one lens alone again.
+    CHECK(lv(soft, 90, 0) > 60 && lv(soft, 91, 0) > 20 && lv(soft, 89, 0) > 20);
+    CHECK(lv(soft, 93, 0) == 0 && lv(soft, 87, 0) == 0);
+    CHECK(lv(soft, -90, 0) > 60 && lv(soft, 0, 89.9) > 0);
+    CHECK(lv(soft, 0, 0) == 0 && lv(soft, 180, 0) == 0);
+    CHECK(lv(soft, 80, 0) == 0); // 10 deg off the boundary: one lens alone
+
+    // The seam ratio: nothing to say about a strip that isn't a belt.
+    {
+        orbiscore::Image small, other;
+        small.alloc(2048, SH);
+        other.alloc(2048, SH);
+        CHECK(std::isnan(orbiscore::EacCubeStitcher::SeamRatio(small, other, L)));
+    }
+}
+
 void testYcbcrRows()
 {
     using orbiscore::YcbcrMatrix;
@@ -3770,6 +4102,8 @@ int main()
     testGpsAlignedBySpeed();
     testMotion();
     testGpsAlignedByAcceleration();
+    testGoproGpmf();
+    testEacCube();
     testYcbcrRows();
 
     if (g_failures == 0)

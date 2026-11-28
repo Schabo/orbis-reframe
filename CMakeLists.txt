@@ -380,6 +380,8 @@ if(FFMPEG_FOUND)
         src/camera/Insta360Reader.cpp
         src/camera/DjiReader.h
         src/camera/DjiReader.cpp
+        src/camera/GoproReader.h
+        src/camera/GoproReader.cpp
         src/camera/ReaderUtil.h
         src/camera/ReaderUtil.cpp
         src/camera/MediaInfo.h

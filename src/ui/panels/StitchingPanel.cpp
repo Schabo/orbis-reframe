@@ -30,6 +30,14 @@ StitchingPanel::StitchingPanel(QWidget *parent)
     m_noGuards->hide();
     form()->addRow(m_noGuards);
 
+    m_cameraStitched = new QLabel(tr("The camera stitched this clip itself, so there's nothing "
+                                     "to set here."),
+                                  this);
+    m_cameraStitched->setObjectName(QStringLiteral("stitchByCamera"));
+    m_cameraStitched->setWordWrap(true);
+    m_cameraStitched->hide();
+    form()->addRow(m_cameraStitched);
+
     // Order matches stitch::PreviewStitchConfig::Method.
     m_method = new QComboBox(this);
     m_method->setObjectName(QStringLiteral("stitchMethod"));
@@ -113,6 +121,7 @@ StitchingPanel::StitchingPanel(QWidget *parent)
     m_calibrate->setToolTip(tr("Measure your camera's lenses with a chart on your monitor, so "
                                "the two pictures line up better than with the lens model the "
                                "camera records."));
+    m_calibrateTip = m_calibrate->toolTip();
     buttons->addWidget(m_calibrate);
     buttons->addStretch(1);
     connect(m_calibrate, &QPushButton::clicked, this, &StitchingPanel::calibrateRequested);
@@ -202,9 +211,32 @@ void StitchingPanel::setCalibrations(const QStringList &labels, const QStringLis
 
 void StitchingPanel::setCalibrateAvailable(bool available, const QString &whyNot)
 {
-    m_calibrate->setEnabled(available);
+    m_calibrateAvailable = available;
     if (!available && !whyNot.isEmpty())
-        m_calibrate->setToolTip(whyNot);
+        m_calibrateTip = whyNot;
+    if (m_cameraStitched->isHidden()) {
+        m_calibrate->setEnabled(available);
+        m_calibrate->setToolTip(m_calibrateTip);
+    }
+}
+
+void StitchingPanel::setCameraStitched(bool stitched)
+{
+    m_cameraStitched->setVisible(stitched);
+    if (!stitched) {
+        m_calibrate->setEnabled(m_calibrateAvailable);
+        m_calibrate->setToolTip(m_calibrateTip);
+        return;
+    }
+    m_noGuards->hide();
+    for (QWidget *w : {static_cast<QWidget *>(m_lensGuard), static_cast<QWidget *>(m_method),
+                       static_cast<QWidget *>(m_seamColourBlend),
+                       static_cast<QWidget *>(m_seamFlow), static_cast<QWidget *>(m_calibration),
+                       static_cast<QWidget *>(m_applyToAll), static_cast<QWidget *>(m_calibrate)})
+        w->setEnabled(false);
+    m_calibrate->setToolTip(tr("Calibrate lenses measures the two lens pictures of a camera "
+                               "that leaves the stitching to orbis-reframe; this clip's camera "
+                               "stitched it itself."));
 }
 
 void StitchingPanel::setSeamStatus(const QString &text, const QString &details)

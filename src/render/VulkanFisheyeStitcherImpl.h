@@ -84,8 +84,9 @@ struct ShaderParams {
     // fractions), and the box its samples stay in (min uv, max uv).
     float lensRect[2][4];
     float lensBox[2][4];
+    float cube[4]; // the camera's own cubemap: centre, side, overlap (px), on (0/1)
 };
-static_assert(sizeof(ShaderParams) == 9584, "ShaderParams must match the std140 UBO");
+static_assert(sizeof(ShaderParams) == 9600, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
 static_assert(LensSlot::kBlurCellsW == orbiscore::kBlurCellsPerQuad && LensSlot::kBlurCellsH == orbiscore::kMaxBlurQuads,
               "the blur cell table: a row of kBlurCellsPerQuad per quad");
