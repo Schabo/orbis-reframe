@@ -3963,8 +3963,11 @@ void testEacCube()
     };
     CHECK(lv(hard, 89, 0) == 0 && lv(hard, 91, 0) == 0); // hard cut: no overlap read
     // The blend reads it: at the boundary each half reaches the overlap's
-    // edge (half its level), and a few degrees on one half is inside it.
-    CHECK(lv(soft, 90, 0) > 60 && lv(soft, 92, 0) > 20 && lv(soft, 88, 0) > 20);
+    // edge (half its level), and a degree on one half is inside it. The fade
+    // spans the overlap, half of it (~2.2 deg) each side of the boundary:
+    // three degrees off it, one lens alone again.
+    CHECK(lv(soft, 90, 0) > 60 && lv(soft, 91, 0) > 20 && lv(soft, 89, 0) > 20);
+    CHECK(lv(soft, 93, 0) == 0 && lv(soft, 87, 0) == 0);
     CHECK(lv(soft, -90, 0) > 60 && lv(soft, 0, 89.9) > 0);
     CHECK(lv(soft, 0, 0) == 0 && lv(soft, 180, 0) == 0);
     CHECK(lv(soft, 80, 0) == 0); // 10 deg off the boundary: one lens alone

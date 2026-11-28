@@ -38,10 +38,12 @@ bool EacCubeStitcher::configure(int streamW, int streamH, const EacLayout& layou
     overlap_ = layout.overlap;
     span_ = layout.side - layout.overlap;
 
-    // Inside a side face, where both lenses' halves reach: |u| < 2 * overlap
-    // / span (each half runs on `overlap` px past the boundary at u = 0).
-    // The cross-fade takes all of it.
-    const double band = 2.0 * overlap_ / span_;
+    // The cross-fade spans the overlap, centred on the lens boundary at u = 0:
+    // each lens's half of a side face runs on overlap / 2 px past it (PMOD's
+    // first value), and in u a pixel is 2 / span, so |u| < overlap / span.
+    // Past that a half's pixels are the other lens's, showing a direction
+    // `overlap` px away.
+    const double band = static_cast<double>(overlap_) / span_;
 
     px_.assign(static_cast<size_t>(outW) * outH, Pixel{});
     for (int y = 0; y < outH; ++y) {

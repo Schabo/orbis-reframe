@@ -866,7 +866,7 @@ void seamStripPass(ivec2 gid)
 // SIDE -- stream 0 LEFT | FRONT | RIGHT, stream 1 DOWN | BACK | TOP -- laid
 // out as P.cube says: the centre face, a side region holding a side face
 // (`span` px for 90 deg) split at the lens boundary with the `ov` px overlap
-// between its halves, cross-faded over the whole overlap.
+// between its halves, cross-faded over that overlap.
 bool cubeActive() { return P.cube.w == 1.0; }
 
 vec3 cubeSample(vec3 d)
@@ -901,7 +901,8 @@ vec3 cubeSample(vec3 d)
     if (region == 1)
         return sampleLensIn(s, vec2((side + (u + 1.0) * 0.5 * centre) / W, y));
     float x1 = (region == 0 ? 0.0 : side + centre) + (u + 1.0) * 0.5 * span;
-    float band = 2.0 * ov / span;
+    // Over the overlap, centred on the boundary (EacCubeStitcher::configure).
+    float band = ov / span;
     float alpha = clamp((band - u) / (2.0 * band), 0.0, 1.0);
     vec3 c = vec3(0.0);
     if (alpha > 0.0)

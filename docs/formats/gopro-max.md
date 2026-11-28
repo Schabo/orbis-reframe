@@ -69,8 +69,13 @@ TOP (e_y, −e_x), DOWN (−e_y, −e_x).
 - ✅ **A side face** is 1312 px for 90°, cut in half where the two lenses
   meet (the plane y = 0), with a **64 px overlap** between the halves: the
   half nearer the centre face at 0–656 of its 1376 px region, the outer half
-  at 720–1376. Each half runs on into the overlap — its lens's view past the
-  boundary — and the stitch cross-fades them over it.
+  at 720–1376. The overlap is both lenses' view of the same 64 px: each
+  half runs on **32 px** past the boundary, half the overlap, and there the
+  strip switches to the other lens. The stitch cross-fades the halves over
+  those ±32 px. Measured on seven frames (`GS012267.360` at 5, 20, 40 and
+  60 s, the three `GS012266` chapters at 100 s), both streams, both side
+  regions: in all 28 regions the strongest column-to-column step between
+  columns 600 and 780 is at 687 | 688, the boundary (656) plus 32.
 - ✅ **Equi-angular**: a pixel's direction is linear in angle across the
   face (the e above), not in its tangent. A rectilinear reading gives a
   curved horizon and a bad seam.
@@ -83,12 +88,13 @@ every strip region of both streams, all eight symmetries of a square and the
 face's offset and scale in the region were tried, and the one whose picture
 correlates best with FFmpeg's kept: FRONT at NCC 0.998, BACK 0.999, each
 half of each side face ≥ 0.9994, the runner-up of every face ≤ 0.62. The
-side faces' 1312 px span and 64 px overlap are where each half fits. The
-whole frame then matches FFmpeg's at 37.97 dB (MAD 1.10 more than 15° from
-the lens boundary — resampling and colour conversion — and 4.90 within 3° of
-it, where the two cross-fades differ). An earlier layout, max2sphere's
-(square 1376 px side faces, a 32 px band), put face edges through the scene;
-it is not used.
+side faces' 1312 px span and 64 px overlap are where each half fits. With
+the cross-fade over the overlap, our render of the seven frames above
+matches FFmpeg's at 44.68 dB over the whole frame and 48.91 dB within 32 px
+of the lens boundary. A fade twice as wide, which reads the other lens's
+pixels 32–64 px past the boundary, gave 38.02 and 29.10 dB. An earlier
+layout, max2sphere's (square 1376 px side faces, a 32 px band), put face
+edges through the scene; it is not used.
 
 - ✅ **The file states the layout**: the global settings' `PMOD` is
   `[32, 1408, 1376]` on all six files (§6). ⚠️ Read as half the overlap
@@ -97,13 +103,14 @@ it is not used.
   takes the layout from the file. ❓ `1408` is the centre face plus the
   overlap, a side region plus half of it, and the `.LRV`'s width alike; one
   mode can't tell which. The reader doesn't use it.
-- ✅ **The seam.** The cross-fade over the overlap makes the far field
-  continuous: on `GS012267.360` at 5 s the luminance gradient across the
-  boundary is the same as 3–10° away from it (ratio 1.00, ours and FFmpeg's
-  alike), and the hard cut's face edges measure **0.46** on the seam
-  metric (`EacCubeStitcher::SeamRatio`: the median jump across a face
-  boundary over the median of the busiest gradients inside the faces; the
-  wrong layout measured 12–14). Near objects still disagree across the
+- ✅ **The seam.** The cross-fade over the overlap keeps the far field's
+  detail across the boundary as FFmpeg's does: on the seven frames above,
+  the mean luminance gradient within 4 px of the boundary over that 3–10°
+  away from it is within 0.08 of FFmpeg's on every frame. The hard cut's
+  face edges measure **0.46** on the seam metric
+  (`EacCubeStitcher::SeamRatio`: the median jump across a face boundary
+  over the median of the busiest gradients inside the faces; the wrong
+  layout measured 12–14). Near objects still disagree across the
   boundary: the lenses are ~22.75 mm apart sideways and ~36.4 mm along the
   axis (`SHFX` / `SHFZ`, §6), parallax no blend can hide.
 
