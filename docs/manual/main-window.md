@@ -95,7 +95,7 @@ that's on the timeline always shows. This too is remembered.
 | Watch a file before putting it on the timeline | Click the play button on its picture (it shows when the mouse is over the file), or select it and press `Space`. See [Previewing a file](#previewing-a-file). |
 | Put a file on the timeline | Drag it onto the timeline, or double-click it. A 360° clip goes onto the video track, a video onto an overlay track as a picture in picture, an audio file onto an audio track; see [The timeline](timeline.md). You can select several files and drag them together. |
 | Remove a file from the project | Right-click it and choose **Remove from project**, or press `Delete`. The file itself isn't deleted. A file used on the timeline can't be removed. |
-| Remove a file from the disk | Right-click it and choose **Remove from file system (move to trash)** to move it to the trash, where you can put it back, or **Remove from file system (no way to undelete)** to delete it for good. Both ask first. A clip made of several files loses all of them. A file used on the timeline, or one that isn't on the disk, can't be removed. |
+| Remove a file from the disk | Right-click it and choose **Move to trash** to move it to the trash, where you can put it back, or **Delete permanently** to delete it for good. Both ask first. A clip made of several files loses all of them. A file used on the timeline, or one that isn't on the disk, can't be removed. |
 | Find a file on disk | Right-click it and choose **Show in file manager**. |
 | Find a moved or renamed file | Double-click it (it's red, *File not found*), or right-click it and choose **Locate file…**, and pick where it is now. See [Projects and export](projects-and-export.md#where-the-clips-are). |
 

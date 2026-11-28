@@ -854,15 +854,14 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     // The files themselves: to the trash, or gone for good. MainWindow asks
     // first and deletes a take's other files too.
     m_trashAction =
-        new QAction(theme::icon(QStringLiteral("trash-2")),
-                    tr("Remove from file system (move to trash)"), this);
+        new QAction(theme::icon(QStringLiteral("trash-2")), tr("Move to trash"), this);
     m_trashAction->setObjectName(QStringLiteral("mediaMoveToTrashAction"));
     connect(m_trashAction, &QAction::triggered, this, [this] {
         const QStringList paths = selectedPaths();
         if (m_trashAction->isEnabled() && !paths.isEmpty())
             emit moveToTrashRequested(paths);
     });
-    m_deleteAction = new QAction(tr("Remove from file system (no way to undelete)"), this);
+    m_deleteAction = new QAction(tr("Delete permanently"), this);
     m_deleteAction->setObjectName(QStringLiteral("mediaDeletePermanentlyAction"));
     connect(m_deleteAction, &QAction::triggered, this, [this] {
         const QStringList paths = selectedPaths();

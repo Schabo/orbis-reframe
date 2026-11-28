@@ -544,6 +544,8 @@ if(FFMPEG_FOUND)
         src/ui/MediaPoolPanel.h
         src/ui/MediaProbe.cpp
         src/ui/MediaProbe.h
+        src/ui/MediaRemoval.cpp
+        src/ui/MediaRemoval.h
         src/ui/ThumbnailCache.cpp
         src/ui/ThumbnailCache.h
         src/ui/SettingsPanel.cpp

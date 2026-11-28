@@ -564,8 +564,9 @@ private:
     void locateMedia(const QString &path);
     // Remove from file system, after asking: the pool items' files go to
     // the trash, or are deleted for good. A take loses all its files (its
-    // companions and a split recording's parts). An item whose files could
-    // not all be removed stays in the pool, and the warning names them.
+    // companions, a split recording's parts, the camera's proxies and the
+    // X6's backup sound file). An item whose files could not all be removed
+    // stays in the pool, and the warning names them.
     void moveMediaToTrash(const QStringList &paths);
     void deleteMediaPermanently(const QStringList &paths);
     void removeMediaFromDisk(const QStringList &paths, bool toTrash);

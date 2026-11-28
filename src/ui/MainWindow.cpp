@@ -15,6 +15,7 @@
 #include <QCloseEvent>
 #include <QDir>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QDesktopServices>
 #include <QFile>
 #include <QLocale>
@@ -24,6 +25,7 @@
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
@@ -36,6 +38,8 @@
 #include <QSettings>
 #include <QSplitter>
 #include <QShortcut>
+#include <QStyle>
+#include <QTextEdit>
 #include <QTimer>
 #include <QStackedWidget>
 #include <QThread>
@@ -47,6 +51,7 @@
 #include <cmath>
 
 #include <IStitchSource.h> // stitch::PreviewStitchConfig
+#include "ClipMetadata.h" // camera::ReadClipMetadata
 
 #include "AudioPlayer.h"
 #ifdef ORBIS_REFRAME_HAVE_TRACKING
@@ -60,6 +65,7 @@
 #include "RenderJobs.h"
 #include "MediaImporter.h"
 #include "MediaPoolPanel.h"
+#include "MediaRemoval.h"
 #include "TitlePresets.h"
 #include "TitlesPanel.h"
 #include "TransitionsPanel.h"
@@ -3307,21 +3313,251 @@ void MainWindow::locateMedia(const QString &path)
 
 namespace {
 
-// Every file a take is made of: the pool's file, its companions (a ONE X2's
-// second lens file) and a recording split over several files' later parts,
-// once each.
-QStringList takeFiles(const MediaPool &pool, const QStringList &paths)
+// Every file the timeline plays: the main video track's clips, and the
+// overlay and audio tracks' clips.
+QSet<QString> timelineFiles(const Timeline &timeline)
+{
+    QSet<QString> used;
+    for (int i = 0; i < timeline.count(); ++i)
+        used.insert(timeline.clipAt(i).sourcePath);
+    for (int i = 0; i < timeline.trackCount(); ++i)
+        for (const TrackClip &c : timeline.trackAt(i).clips)
+            used.insert(c.sourcePath);
+    return used;
+}
+
+// Every file of the selected take: the item's own files, its split parts,
+// the camera's proxies and the backup sound files. Once each.
+QStringList collectTakeFiles(const MediaPool &pool, const QStringList &paths)
 {
     QStringList files;
     for (const QString &path : paths) {
         const MediaItem *m = pool.item(path);
         if (!m)
             continue;
-        for (const QString &file : m->files() + m->partFiles())
+        // The camera reader knows the proxies: the take's own and each
+        // part's. A file it can't read has none to go with it.
+        std::shared_ptr<const camera::ClipMetadata> metadata;
+        if (m->kind == MediaItem::Kind::Clip360)
+            metadata = camera::ReadClipMetadata(m->path.toStdString());
+        for (const QString &file : mediaremoval::takeFiles(*m, metadata.get()))
             if (!files.contains(file))
                 files << file;
     }
     return files;
+}
+
+// Drop a backup sound file the timeline uses. False when another file is on
+// the timeline, or nothing is left: the take stays.
+bool keepRemovableFiles(QStringList &files, const QSet<QString> &used)
+{
+    for (int i = files.size() - 1; i >= 0; --i) {
+        if (!used.contains(files[i]))
+            continue;
+        if (media::isBackupAudio(files[i])) {
+            files.removeAt(i);
+            continue;
+        }
+        return false;
+    }
+    return !files.isEmpty();
+}
+
+// The dialog lists only files that are there now. The deletion list keeps
+// the rest: a file that vanished since the selection counts as gone, so its
+// item leaves the pool.
+QStringList removalShownFiles(const QStringList &files)
+{
+    QStringList shown;
+    for (const QString &file : files)
+        if (QFileInfo::exists(file))
+            shown << file;
+    return shown;
+}
+
+QString removalMessage(const QStringList &shown, bool toTrash)
+{
+    const QString name = shown.size() == 1 ? QFileInfo(shown.first()).fileName() : QString();
+    QString text;
+    if (toTrash) {
+        if (!name.isEmpty())
+            text = MainWindow::tr("Move \u201c%1\u201d to the trash?").arg(name);
+        else if (shown.isEmpty())
+            text = MainWindow::tr("Move the selected files to the trash?");
+        else
+            text = MainWindow::tr("Move %n files to the trash?", nullptr, int(shown.size()));
+    } else {
+        if (!name.isEmpty())
+            text = MainWindow::tr("Delete \u201c%1\u201d permanently? This can't be undone.")
+                       .arg(name);
+        else if (shown.isEmpty())
+            text = MainWindow::tr("Delete the selected files permanently? This can't be undone.");
+        else
+            text = MainWindow::tr("Delete %n files permanently? This can't be undone.", nullptr,
+                                  int(shown.size()));
+    }
+    return text;
+}
+
+// The custom confirmation dialog: a warning icon, the message, the file list
+// and the buttons. The details toggle sits on the left of the button row.
+class RemovalDialog : public QDialog {
+public:
+    RemovalDialog(QWidget *parent, const QString &message, const QStringList &shown,
+                  bool toTrash);
+
+private:
+    void addFileList(const QStringList &shown);
+    void addButtons(bool toTrash);
+    QVBoxLayout *m_layout = nullptr;
+    QPushButton *m_showDetails = nullptr;
+};
+
+RemovalDialog::RemovalDialog(QWidget *parent, const QString &message,
+                             const QStringList &shown, bool toTrash)
+    : QDialog(parent)
+{
+    setWindowTitle(MainWindow::tr("Remove from file system"));
+    setSizeGripEnabled(true);
+    m_layout = new QVBoxLayout(this);
+    m_layout->setSizeConstraint(QLayout::SetDefaultConstraint);
+
+    auto *head = new QHBoxLayout;
+    auto *icon = new QLabel(this);
+    icon->setPixmap(style()->standardIcon(QStyle::SP_MessageBoxWarning).pixmap(32, 32));
+    icon->setAlignment(Qt::AlignTop);
+    head->addWidget(icon);
+    auto *label = new QLabel(message, this);
+    label->setObjectName(QStringLiteral("mediaRemovalText"));
+    label->setTextFormat(Qt::PlainText);
+    label->setWordWrap(true);
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    head->addWidget(label, 1);
+    m_layout->addLayout(head);
+
+    if (toTrash) {
+        auto *info =
+            new QLabel(MainWindow::tr("You can put the files back from the trash."), this);
+        info->setWordWrap(true);
+        m_layout->addWidget(info);
+    }
+
+    addFileList(shown);
+    addButtons(toTrash);
+
+    // The old QMessageBox opened 400 pixels wide for this confirmation. The
+    // custom layout alone hints a narrow width, so start at the old width.
+    constexpr int kOldBoxWidth = 400;
+    const QSize hint = sizeHint();
+    resize(std::max(kOldBoxWidth, hint.width()), hint.height());
+}
+
+void RemovalDialog::addFileList(const QStringList &shown)
+{
+    if (shown.isEmpty())
+        return;
+    auto *details = new QTextEdit(this);
+    details->setObjectName(QStringLiteral("mediaRemovalDetails"));
+    details->setReadOnly(true);
+    details->setPlainText(shown.join(QLatin1Char('\n')));
+    details->setLineWrapMode(QTextEdit::NoWrap);
+    details->setMinimumHeight(120);
+    details->setVisible(false);
+    m_layout->addWidget(details);
+
+    m_showDetails = new QPushButton(MainWindow::tr("Show Details..."), this);
+    m_showDetails->setObjectName(QStringLiteral("mediaRemovalDetailsButton"));
+    m_showDetails->setCheckable(true);
+    m_showDetails->setAutoDefault(false);
+    QObject::connect(m_showDetails, &QPushButton::toggled, this,
+                     [details, show = m_showDetails](bool open) {
+                         details->setVisible(open);
+                         show->setText(open ? MainWindow::tr("Hide Details...")
+                                            : MainWindow::tr("Show Details..."));
+                     });
+}
+
+void RemovalDialog::addButtons(bool toTrash)
+{
+    auto *buttons = new QDialogButtonBox(this);
+    QPushButton *go = buttons->addButton(
+        toTrash ? MainWindow::tr("&Move to trash") : MainWindow::tr("&Delete permanently"),
+        QDialogButtonBox::DestructiveRole);
+    QPushButton *cancel = buttons->addButton(QDialogButtonBox::Cancel);
+    cancel->setDefault(true);
+    cancel->setAutoDefault(true);
+    go->setAutoDefault(false);
+    QObject::connect(go, &QPushButton::clicked, this, &QDialog::accept);
+    QObject::connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
+    auto *buttonRow = new QHBoxLayout;
+    if (m_showDetails)
+        buttonRow->addWidget(m_showDetails);
+    buttonRow->addStretch(1);
+    buttonRow->addWidget(buttons);
+    m_layout->addLayout(buttonRow);
+}
+
+bool confirmRemoveFiles(QWidget *parent, const QStringList &files, bool toTrash)
+{
+    const QStringList shown = removalShownFiles(files);
+    RemovalDialog dialog(parent, removalMessage(shown, toTrash), shown, toTrash);
+    return dialog.exec() == QDialog::Accepted;
+}
+
+struct RemovalResult {
+    QSet<QString> gone;
+    QStringList failed;
+};
+
+RemovalResult removeTakeFiles(const QStringList &files, bool toTrash)
+{
+    RemovalResult result;
+    for (const QString &file : files) {
+        if (!QFileInfo::exists(file)) {
+            result.gone.insert(file); // removed since the panel checked it
+            continue;
+        }
+        QFile f(file);
+        if (toTrash ? f.moveToTrash() : f.remove())
+            result.gone.insert(file);
+        else
+            result.failed << MainWindow::tr("%1: %2").arg(QFileInfo(file).fileName(),
+                                                          f.errorString());
+    }
+    return result;
+}
+
+// An item whose files all went leaves the pool; one with a file that
+// couldn't be removed stays (it is flagged missing by the next check). A
+// backup sound file of its own is an item too.
+void removeGonePoolItems(MediaPool &pool, const QStringList &paths, const QStringList &files,
+                         const QSet<QString> &gone)
+{
+    QStringList candidates = paths;
+    for (const QString &file : files)
+        if (pool.contains(file) && !candidates.contains(file))
+            candidates << file;
+    QStringList removed;
+    for (const QString &path : candidates) {
+        const MediaItem *m = pool.item(path);
+        if (!m)
+            continue;
+        const QStringList itemFiles = m->files() + m->partFiles();
+        if (std::all_of(itemFiles.begin(), itemFiles.end(),
+                        [&gone](const QString &file) { return gone.contains(file); }))
+            removed << path;
+    }
+    if (!removed.isEmpty())
+        pool.remove(removed);
+}
+
+void warnFailedRemovals(QWidget *parent, const QStringList &failed)
+{
+    if (failed.isEmpty())
+        return;
+    QMessageBox::warning(parent, MainWindow::tr("Some files were not removed"),
+                         MainWindow::tr("Could not remove these files:\n\n%1")
+                             .arg(failed.join(QLatin1Char('\n'))));
 }
 
 } // namespace
@@ -3339,66 +3575,15 @@ void MainWindow::deleteMediaPermanently(const QStringList &paths)
 void MainWindow::removeMediaFromDisk(const QStringList &paths, bool toTrash)
 {
     MediaPool *pool = m_project->mediaPool();
-    const QStringList files = takeFiles(*pool, paths);
-    if (files.isEmpty())
+    const QSet<QString> used = timelineFiles(*m_timeline);
+    QStringList files = collectTakeFiles(*pool, paths);
+    if (!keepRemovableFiles(files, used))
         return;
-
-    const QString name = files.size() == 1 ? QFileInfo(files.first()).fileName() : QString();
-    QMessageBox box(QMessageBox::Warning, tr("Remove from file system"),
-                    toTrash ? (name.isEmpty()
-                                   ? tr("Move %n files to the trash?", nullptr, int(files.size()))
-                                   : tr("Move \u201c%1\u201d to the trash?").arg(name))
-                            : (name.isEmpty()
-                                   ? tr("Delete %n files permanently? This can't be undone.",
-                                        nullptr, int(files.size()))
-                                   : tr("Delete \u201c%1\u201d permanently? This can't be "
-                                        "undone.")
-                                         .arg(name)),
-                    QMessageBox::NoButton, this);
-    if (toTrash)
-        box.setInformativeText(tr("You can put the files back from the trash."));
-    if (files.size() > 1)
-        box.setDetailedText(files.join(QLatin1Char('\n')));
-    QPushButton *go = box.addButton(toTrash ? tr("&Move to Trash") : tr("&Delete Permanently"),
-                                    QMessageBox::DestructiveRole);
-    QPushButton *cancel = box.addButton(QMessageBox::Cancel);
-    box.setDefaultButton(cancel);
-    box.setEscapeButton(cancel);
-    box.exec();
-    if (box.clickedButton() != go)
+    if (!confirmRemoveFiles(this, files, toTrash))
         return;
-
-    QStringList failed;
-    QSet<QString> gone;
-    for (const QString &file : files) {
-        if (!QFileInfo::exists(file)) {
-            gone.insert(file); // removed since the panel checked it
-            continue;
-        }
-        QFile f(file);
-        if (toTrash ? f.moveToTrash() : f.remove())
-            gone.insert(file);
-        else
-            failed << tr("%1: %2").arg(QFileInfo(file).fileName(), f.errorString());
-    }
-    // An item whose files all went leaves the pool; one with a file that
-    // couldn't be removed stays (it is flagged missing by the next check).
-    QStringList removed;
-    for (const QString &path : paths) {
-        const MediaItem *m = pool->item(path);
-        if (!m)
-            continue;
-        const QStringList itemFiles = m->files() + m->partFiles();
-        if (std::all_of(itemFiles.begin(), itemFiles.end(),
-                        [&gone](const QString &file) { return gone.contains(file); }))
-            removed << path;
-    }
-    if (!removed.isEmpty())
-        pool->remove(removed);
-    if (!failed.isEmpty())
-        QMessageBox::warning(this, tr("Some files were not removed"),
-                             tr("Could not remove these files:\n\n%1")
-                                 .arg(failed.join(QLatin1Char('\n'))));
+    const RemovalResult result = removeTakeFiles(files, toTrash);
+    removeGonePoolItems(*pool, paths, files, result.gone);
+    warnFailedRemovals(this, result.failed);
 }
 
 void MainWindow::recheckMissingMedia()
@@ -3462,13 +3647,7 @@ void MainWindow::recheckMissingMedia()
 
 void MainWindow::updateMediaInUse()
 {
-    QSet<QString> used;
-    for (int i = 0; i < m_timeline->count(); ++i)
-        used.insert(m_timeline->clipAt(i).sourcePath);
-    for (int i = 0; i < m_timeline->trackCount(); ++i)
-        for (const TrackClip &c : m_timeline->trackAt(i).clips)
-            used.insert(c.sourcePath);
-    m_mediaPanel->setInUse(used);
+    m_mediaPanel->setInUse(timelineFiles(*m_timeline));
 }
 
 
