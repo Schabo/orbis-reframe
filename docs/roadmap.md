@@ -110,18 +110,17 @@ each is in its document in [`formats/`](formats/README.md).
   The Osmo 360, 360 II and Air follow when their clips can be measured.
 - **GoPro MAX / MAX2**: stitched in the camera into an equi-angular cubemap
   over two streams, so no lens model: the cube is data in the stitch
-  (`StitchGpuParams::eacCube` and its layout, the shared shader's
-  `cubeSample`, `orbiscore::EacCubeStitcher` on the CPU), and
-  `NativeStitchSource` opens a MAX clip on every path a fisheye clip has.
-  The roadmap planned a cubemap source behind its own `IStitchSource`; it
-  was built first and folded in, because every GPU path (decode, the fused
-  view, the viewport's lens frames, export, the privacy blur) takes the
-  picture through one shader function, which a second source would have
-  had to copy. What differs per model and mode is a row of
-  `camera::GoproReader`'s table: the cube layout (used when the file
-  doesn't state it in `PMOD`), the IMU axes and the picture's lag behind the
-  frame times; a clip without a row opens untested. Built for the MAX's
-  5.6K (formats/gopro-max.md, measured on a contributor's four takes).
+  (`StitchGpuParams`' cube layout, the shared shader's `cubeSample`,
+  `orbiscore::EacCubeStitcher` on the CPU), and `NativeStitchSource` opens
+  a MAX clip on every path a fisheye clip has. Every GPU path (decode, the
+  fused view, the viewport's lens frames, export, the privacy blur) takes
+  the picture through one shader function, so the cube is a branch of that
+  function, not a source of its own that would have to copy it. What
+  differs per model and mode is a row of `camera::GoproReader`'s table: the
+  cube layout (used when the file doesn't state it in `PMOD`), the IMU axes
+  and the picture's lag behind the frame times; a clip without a row opens
+  untested. Built for the MAX's 5.6K (formats/gopro-max.md, measured on a
+  contributor's four takes).
   Next, each with the measurement that says it worked:
   - A take in chapters as one clip: the chapters placed by the camera clock
     their telemetry carries (formats/gopro-max.md, *Chapters*); measured by
@@ -136,6 +135,10 @@ each is in its document in [`formats/`](formats/README.md).
     the IMU axes and lag measured from the picture as for the 5.6K).
   - Horizon: `CORI` is the camera's own orientation a frame, a candidate
     to compare Horizon lock against.
+  - GPS (`GPS5`): the MAX records it with GPS switched on; the clips at
+    hand were filmed with it off. Needs a clip filmed with GPS on, and is
+    measured as the other cameras' GPS is: lined up with the IMU's
+    acceleration, shown in titles and gauges.
 - **Insta360 Luna**: a flat camera, so the flat-video path; needs the
   10-bit / log handling there, through LUTs.
 - Not planned: the ONE X / ONE R / ONE RS.

@@ -6,7 +6,8 @@ to start orbis-reframe and open your first clip.
 orbis-reframe is a video editor for 360° camera footage. It opens Insta360
 `.insv` files directly, and the **Insta360 X5** is the camera it's built and
 tested on. You don't need Insta360 Studio or any other Insta360 software.
-It also opens the DJI Avata 360's `.OSV` files, experimentally (below).
+It also opens the DJI Avata 360's `.OSV` files and the GoPro MAX's `.360`
+files, experimentally (below).
 
 The X5's **Interval photos** open as a timelapse: add any photo of a
 series (`IMG_….insp`), or the folder, and the whole series comes in as one
@@ -69,7 +70,9 @@ yet.
 
 A GoPro MAX `.360` filmed at 5.6K opens, plays and exports
 (experimental). The camera stitched it already, so the Stitching panel's
-settings don't apply. Stabilization uses its gyro. Other GoPro 360 cameras
+settings don't apply. Its clips are
+[stabilized](stabilization.md#on-the-gopro-max) from the camera's gyro and
+accelerometer. Other GoPro 360 cameras
 and modes, such as the MAX2, open like the untested Insta360 models below:
 with the MAX's 5.6K values, and a notice saying so. A take the camera split
 into several files opens one file at a time, and the camera's preview file

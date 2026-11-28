@@ -657,7 +657,10 @@ std::optional<orbiscore::ImuTrack> GoproReader::readImu(const ClipMetadata& clip
 }
 
 std::optional<orbiscore::GpsTrack> GoproReader::readGps(const ClipMetadata& clip) const {
-    // The MAX records no GPS in any mode we have measured.
+    // Not read yet. The MAX records GPS (GPS5) with GPS switched on; the
+    // clips this reader was measured on were filmed with it off and carry
+    // none, so there is nothing yet to check a reader against
+    // (docs/formats/gopro-max.md, *Files and streams*).
     (void)clip;
     return std::nullopt;
 }
