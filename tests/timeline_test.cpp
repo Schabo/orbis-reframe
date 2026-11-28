@@ -417,7 +417,7 @@ void testTimelineStructure()
     copied.pose.yaw = 0.4f;
     copied.pose.fov = 1.3;
     copied.ease = keytrack::Ease::Out;
-    tl.pasteClipReframeKey(a, 2500, copied);
+    tl.pasteClipReframeKeys(a, 2500, {copied});
     CHECK(reframeTouched == 3);
     {
         const ReframeTrack &t = tl.clipById(a)->reframe;
@@ -428,7 +428,7 @@ void testTimelineStructure()
                   std::abs(t.keys()[i].pose.yaw - 0.4f) < 1e-6f &&
                   std::abs(t.keys()[i].pose.fov - 1.3) < 1e-6);
     }
-    tl.pasteClipReframeKey(999, 2500, copied); // unknown id: no signal
+    tl.pasteClipReframeKeys(999, 2500, {copied}); // unknown id: no signal
     CHECK(reframeTouched == 3);
 
     // colour: all four fields set together, one signal, unknown-id safety
@@ -456,7 +456,8 @@ void testTimelineStructure()
 
 // A block of copied keys lands with the earliest key at the base time and the
 // others at their distance from it, poses and easings included: one edit, one
-// signal. A target within 0.15 s replaces that key and keeps its time.
+// signal. A key within 0.15 s of a target is removed first, so the pasted key
+// takes the target time.
 void testReframeKeyBlockPaste()
 {
     Timeline tl;
@@ -475,7 +476,7 @@ void testReframeKeyBlockPaste()
     second.pose.fov = 1.4;
     second.ease = keytrack::Ease::Out;
     // Out of order: the earliest key sets the base.
-    tl.pasteClipReframeKeys(a, 2500, {second, first});
+    CHECK(tl.pasteClipReframeKeys(a, 2500, {second, first}) == 0);
     CHECK(touched == 1);
     {
         const ReframeTrack &t = tl.clipById(a)->reframe;
@@ -496,8 +497,8 @@ void testReframeKeyBlockPaste()
     tl.pasteClipReframeKeys(a, 2500, {}); // no keys: no signal
     CHECK(touched == 1);
 
-    // Targets 100 ms and 0 ms from keys already there: both replace, and the
-    // keys keep their times.
+    // Targets 100 ms and 0 ms from keys already there: both are removed first,
+    // and the pasted keys land at their target times.
     ReframeKey nearFirst;
     nearFirst.timeMs = 1000;
     nearFirst.pose.yaw = 0.9f;
@@ -506,17 +507,74 @@ void testReframeKeyBlockPaste()
     nearSecond.timeMs = 3100;
     nearSecond.pose.yaw = -0.9f;
     nearSecond.ease = keytrack::Ease::In;
-    tl.pasteClipReframeKeys(a, 2400, {nearFirst, nearSecond});
+    CHECK(tl.pasteClipReframeKeys(a, 2400, {nearFirst, nearSecond}) == 0);
     CHECK(touched == 2);
     const ReframeTrack &t = tl.clipById(a)->reframe;
-    CHECK(t.count() == 2 && t.keyTimes() == (QList<qint64>{2500, 4500}));
-    const int i = t.keyTimes().indexOf(2500);
+    CHECK(t.count() == 2 && t.keyTimes() == (QList<qint64>{2400, 4500}));
+    const int i = t.keyTimes().indexOf(2400);
     const int j = t.keyTimes().indexOf(4500);
     if (i >= 0 && j >= 0)
         CHECK(std::abs(t.keys()[i].pose.yaw - 0.9f) < 1e-6f &&
               t.keys()[i].ease == keytrack::Ease::Out &&
               std::abs(t.keys()[j].pose.yaw + 0.9f) < 1e-6f &&
               t.keys()[j].ease == keytrack::Ease::In);
+}
+
+// Keys closer than 0.15 s keep their spacing through a paste. Keys that would
+// land outside the clip's trim are dropped; the count says how many, and a
+// paste with no key left makes no edit.
+void testReframeKeyBlockPasteCloseAndTrim()
+{
+    Timeline tl;
+    const int a = tl.appendClip("a.insv", 10000, 30.0);
+    int touched = 0;
+    QObject::connect(&tl, &Timeline::clipReframeChanged, &tl, [&](int) { ++touched; });
+
+    ReframeKey closeFirst;
+    closeFirst.timeMs = 1000;
+    closeFirst.pose.yaw = 0.1f;
+    ReframeKey closeSecond;
+    closeSecond.timeMs = 1100;
+    closeSecond.pose.yaw = 0.2f;
+    CHECK(tl.pasteClipReframeKeys(a, 5000, {closeFirst, closeSecond}) == 0);
+    CHECK(touched == 1);
+    {
+        const ReframeTrack &t = tl.clipById(a)->reframe;
+        CHECK(t.keyTimes() == (QList<qint64>{5000, 5100}));
+        const int i = t.keyTimes().indexOf(5000);
+        const int j = t.keyTimes().indexOf(5100);
+        if (i >= 0 && j >= 0)
+            CHECK(std::abs(t.keys()[i].pose.yaw - 0.1f) < 1e-6f &&
+                  std::abs(t.keys()[j].pose.yaw - 0.2f) < 1e-6f);
+    }
+
+    // Trim-out at 6000: a block at 5500 would put its second key at 7500.
+    tl.setClipTrimOut(a, 6000);
+    CHECK(touched == 1); // the keys in the clip stay
+    ReframeKey inTrim;
+    inTrim.timeMs = 1000;
+    inTrim.pose.yaw = 0.3f;
+    ReframeKey pastEnd;
+    pastEnd.timeMs = 3000;
+    pastEnd.pose.yaw = 0.4f;
+    CHECK(tl.pasteClipReframeKeys(a, 5500, {inTrim, pastEnd}) == 1);
+    CHECK(touched == 2);
+    {
+        const ReframeTrack &t = tl.clipById(a)->reframe;
+        CHECK(t.keyTimes() == (QList<qint64>{5000, 5100, 5500}));
+        const int i = t.keyTimes().indexOf(5500);
+        if (i >= 0)
+            CHECK(std::abs(t.keys()[i].pose.yaw - 0.3f) < 1e-6f);
+    }
+
+    // Both keys outside the trim: no edit, no signal, both counted.
+    ReframeKey outsideFirst;
+    outsideFirst.timeMs = 1000;
+    ReframeKey outsideSecond;
+    outsideSecond.timeMs = 2000;
+    CHECK(tl.pasteClipReframeKeys(a, 6100, {outsideFirst, outsideSecond}) == 2);
+    CHECK(touched == 2);
+    CHECK(tl.clipById(a)->reframe.keyTimes() == (QList<qint64>{5000, 5100, 5500}));
 }
 
 void testTimelineSplit()
@@ -988,6 +1046,7 @@ int main()
     testRemoveKeys();
     testTimelineStructure();
     testReframeKeyBlockPaste();
+    testReframeKeyBlockPasteCloseAndTrim();
     testTimelineSplit();
     testSplitScreen();
     testTimelineDuplicate();

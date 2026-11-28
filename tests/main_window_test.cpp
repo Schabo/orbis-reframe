@@ -939,6 +939,7 @@ void testReframeKeyCopyPaste(const Ctx &c)
     CHECK(copy->isEnabled());
     copy->click();
     CHECK(paste->isEnabled());
+    CHECK(paste->text() == "Paste keyframe");
     CHECK(seekTo(c, 2000));
     settle();
     CHECK(!copy->isEnabled()); // no key there yet
@@ -1005,8 +1006,9 @@ void testReframeKeyPasteOnOtherClip(const Ctx &c)
     settle();
 }
 
-// Paste within 0.15 s of a key replaces it and keeps its time; a paste
-// further away adds a key. Both write the copy's view and easing.
+// Paste within 0.15 s of a key removes that key and writes the copy at the
+// playhead; a key further away stays. Both pasted keys keep the copy's view
+// and easing.
 void testReframeKeyPasteReplacesNearKey(const Ctx &c)
 {
     if (c.timeline->count() < 2)
@@ -1043,8 +1045,8 @@ void testReframeKeyPasteReplacesNearKey(const Ctx &c)
     paste->click();
     const ClipItem *clip = &c.timeline->clipAt(1);
     CHECK(clip->reframe.count() == 2);
-    CHECK(clip->reframe.keyTimes() == (QList<qint64>{t, 3000}));
-    int i = clip->reframe.keyTimes().indexOf(t);
+    CHECK(clip->reframe.keyTimes() == (QList<qint64>{t + 100, 3000}));
+    int i = clip->reframe.keyTimes().indexOf(t + 100);
     if (i >= 0)
         CHECK(std::abs(clip->reframe.keys()[i].pose.yaw - 0.3f) < 1e-4f &&
               std::abs(clip->reframe.keys()[i].pose.pitch - 0.1f) < 1e-4f &&
@@ -1055,8 +1057,8 @@ void testReframeKeyPasteReplacesNearKey(const Ctx &c)
     settle();
     paste->click();
     clip = &c.timeline->clipAt(1);
-    CHECK(clip->reframe.count() == 3);
-    CHECK(clip->reframe.keyTimes() == (QList<qint64>{t, t + 200, 3000}));
+    CHECK(clip->reframe.count() == 2);
+    CHECK(clip->reframe.keyTimes() == (QList<qint64>{t + 200, 3000}));
     i = clip->reframe.keyTimes().indexOf(t + 200);
     if (i >= 0)
         CHECK(std::abs(clip->reframe.keys()[i].pose.yaw - 0.3f) < 1e-4f &&
@@ -1166,6 +1168,7 @@ void testReframeKeyBlockCopyPaste(const Ctx &c)
     settle();
     emit c.timelineWidget->keysCopyRequested(a, QVector<qint64>{first, second});
     CHECK(paste->isEnabled());
+    CHECK(paste->text() == "Paste keyframes (2)");
 
     const int b = c.timeline->clipAt(1).id;
     emit c.timelineWidget->clipSelected(b);
@@ -1246,6 +1249,56 @@ void testReframeKeyMenuPaste(const Ctx &c)
     CHECK(c.timeline->count() == 2);
     CHECK(c.timeline->clipAt(1).reframe.isEmpty());
     CHECK(c.timeline->clipAt(0).reframe.count() == 3);
+    c.timeline->clearClipReframe(c.timeline->clipAt(0).id);
+    c.timeline->clearClipReframe(c.timeline->clipAt(1).id);
+    key(c, Qt::Key_Escape);
+    settle();
+}
+
+// A block that runs past the clip's end keeps the keys inside the trim and
+// tells the user how many were dropped.
+void testReframeKeyPasteTrimNotice(const Ctx &c)
+{
+    QAction *undo = action(c, "undoAction");
+    if (!undo || c.timeline->count() < 2)
+        return;
+    auto *sidebar = c.w->findChild<SettingsSidebar *>();
+    if (sidebar)
+        sidebar->setCurrentIndex(SettingsSidebar::VideoTab);
+    auto *paste = find<QPushButton>(c.w, "reframeKeyPasteButton");
+    if (!paste)
+        return;
+    const int a = c.timeline->clipAt(0).id;
+    settle();
+    CHECK(seekTo(c, 1000));
+    settle();
+    const qint64 first = c.timeline->clipAt(0).sourceAtLocalMs(1000);
+    const qint64 second = c.timeline->clipAt(0).sourceAtLocalMs(2000);
+    c.timeline->upsertClipReframeKey(a, first, {0.1f, 0.0f, 0.0f, 1.2});
+    c.timeline->upsertClipReframeKey(a, second, {-0.1f, 0.0f, 0.0f, 0.9});
+    c.timeline->upsertClipReframeKey(a, c.timeline->clipAt(0).sourceAtLocalMs(3000), {});
+    settle();
+    c.timeline->setClipReframeEase(a, first, keytrack::Ease::Out);
+    c.timeline->setClipReframeEase(a, second, keytrack::Ease::In);
+    settle();
+    emit c.timelineWidget->keysCopyRequested(a, QVector<qint64>{first, second});
+    CHECK(paste->text() == "Paste keyframes (2)");
+
+    const int b = c.timeline->clipAt(1).id;
+    c.timeline->setClipTrimOut(b, 3000);
+    settle();
+    emit c.timelineWidget->clipSelected(b);
+    CHECK(seekTo(c, kClipMs + 2500));
+    settle();
+    paste->click();
+    const ClipItem *clip = c.timeline->clipById(b);
+    CHECK(clip && clip->reframe.keyTimes() == QList<qint64>{2500});
+    auto *notice = find<QLabel>(c.w, "editNotice");
+    CHECK(notice &&
+          notice->text() == "1 keyframe fell past the clip's end and wasn't pasted");
+    undo->trigger();
+    CHECK(c.timeline->clipAt(1).reframe.isEmpty());
+    c.timeline->setClipTrimOut(c.timeline->clipAt(1).id, kClipMs);
     c.timeline->clearClipReframe(c.timeline->clipAt(0).id);
     c.timeline->clearClipReframe(c.timeline->clipAt(1).id);
     key(c, Qt::Key_Escape);
@@ -4158,6 +4211,7 @@ int main(int argc, char **argv)
             testReframeKeyPasteUndo(c);
             testReframeKeyBlockCopyPaste(c);
             testReframeKeyMenuPaste(c);
+            testReframeKeyPasteTrimNotice(c);
             testStepOntoCut(c);
             testMarkKeys(c);
             testVideoEdits(c);
