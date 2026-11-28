@@ -50,6 +50,11 @@ public:
     void setCalibrations(const QStringList &labels, const QStringList &tooltips, int current);
     // Whether "Calibrate lenses…" can run; `whyNot` its tooltip when not.
     void setCalibrateAvailable(bool available, const QString &whyNot = QString());
+    // The clip shown was stitched by the camera (the GoPro MAX's cubemap):
+    // none of its settings apply, nor Calibrate lenses (it measures lens
+    // pictures the clip doesn't have), so they're greyed out with a line
+    // saying why. After setState / setNoClip; does not emit.
+    void setCameraStitched(bool stitched);
 
 signals:
     void stitchEdited(LensGuard lensGuard, Method method);
@@ -69,6 +74,7 @@ private:
 
     QComboBox *m_lensGuard = nullptr;
     QLabel *m_noGuards = nullptr;
+    QLabel *m_cameraStitched = nullptr;
     QComboBox *m_method = nullptr;
     QCheckBox *m_seamColourBlend = nullptr;
     QCheckBox *m_seamFlow = nullptr;
@@ -77,4 +83,7 @@ private:
     QLabel *m_seamStatus = nullptr;
     QPushButton *m_applyToAll = nullptr;
     bool m_updating = false; // true while setState() is writing the widgets
+    // setCalibrateAvailable's, which setCameraStitched(false) gives back.
+    bool m_calibrateAvailable = true;
+    QString m_calibrateTip;
 };

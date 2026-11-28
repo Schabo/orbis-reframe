@@ -16,7 +16,7 @@ differences from it, or, for another vendor, from scratch.
 | Antigravity A1 | 360 drone, one `.insv` with both lenses | [`antigravity-a1.md`](antigravity-a1.md) | experimental: 8K, 5.2K and 4K 100 clips, H.265 or H.264, open, stitch, play, stabilize (leveled by the drone's own attitude) and export (a contributor's clips); GPS lined up with the video by the drone's own speed, Direction lock held by its attitude; a renamed clip found again by the name it holds; open: photos |
 | Insta360 Luna (Pro / Ultra) | flat gimbal camera, `.mp4` | [`insta360-luna.md`](insta360-luna.md) | not yet; desk research, no clips |
 | DJI Osmo 360, Osmo 360 II / Air, Avata 360 | 360, `.osv` | [`dji-360.md`](dji-360.md) | Avata 360 experimental: opens, stitches (DJI's own lens model), plays and exports, GPS for titles and gauges, D-Log M through DJI's LUT, stabilization from the camera's fused attitude (a contributor's clips); open: other modes; the Osmo 360 family not yet, desk research |
-| GoPro MAX, MAX2 | 360 stitched in the camera, `.360` (EAC) | [`gopro-max.md`](gopro-max.md) | not yet; desk research, no clips |
+| GoPro MAX, MAX2 | 360 stitched in the camera, `.360` (an equi-angular cubemap) | [`gopro-max.md`](gopro-max.md) | MAX experimental: 5.6K clips open, play (the cube on the GPU, the faces where the file's `PMOD` puts them), stabilize (the gyro, its axes and lag measured from the picture) and export (a contributor's clips); other modes and the MAX2 open untested; open: the seam's parallax, 3K, the MAX2 |
 
 ## Sample clips wanted
 
@@ -27,8 +27,9 @@ have clips of: so far the
 [X4 and X4 Air](insta360-x4.md#modes-and-sample-clips),
 [ONE X2](insta360-one-x2.md#33-every-mode-and-our-clips-of-it),
 [X3](insta360-x3.md#modes-and-sample-clips),
-[Antigravity A1](antigravity-a1.md#modes-and-sample-clips) and
-[DJI Avata 360](dji-360.md#modes-and-sample-clips). The others get
+[Antigravity A1](antigravity-a1.md#modes-and-sample-clips),
+[DJI Avata 360](dji-360.md#modes-and-sample-clips) and
+[GoPro MAX](gopro-max.md#modes-and-sample-clips). The others get
 the list when their first clips arrive.
 Most of the documents above are desk research: **we need short clips from
 every camera above that isn't supported yet** (except the ONE X2: the
@@ -55,7 +56,7 @@ maintainer has one) to find out what the files really hold. If you own one, plea
   footage shouldn't be, open the issue without the link and say so.
 
 Wanted most: the **Insta360 X4**, **X4 Air** and **X6**, the **DJI Osmo 360** family
-and the **GoPro MAX / MAX2**, then the rest of the table.
+the **GoPro MAX2** and the MAX's 3K mode, then the rest of the table.
 
 ## Confidence markers
 

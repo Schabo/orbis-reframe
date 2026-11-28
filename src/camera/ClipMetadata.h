@@ -3,6 +3,7 @@
 #include <orbis-core/audio/AudioPart.h>   // orbiscore::AudioPart
 #include <orbis-core/metadata/Gps.h>         // orbiscore::GpsTrack
 #include <orbis-core/metadata/Imu.h>         // orbiscore::ImuTrack
+#include <orbis-core/stitch/EacCubeStitcher.h> // orbiscore::EacLayout
 #include <orbis-core/stitch/LensModel.h>   // orbiscore::LensCalibExt, orbiscore::LensPose
 #include <orbis-core/stitch/LensProfile.h> // orbiscore::LensProfile
 #include <orbis-core/stitch/LensSource.h>  // orbiscore::LensSource
@@ -27,7 +28,10 @@ namespace camera {
 
 // How the camera stores the sphere.
 enum class Projection {
-    DualFisheye, // two opposite fisheye lenses, stitched here
+    DualFisheye,     // two opposite fisheye lenses, stitched here
+    EquiAngularCube, // the camera stitched already: six equi-angular cube
+                     // faces across two streams (the GoPro MAX,
+                     // docs/formats/gopro-max.md)
 };
 
 // Where a lens's picture comes from: a file and its n-th video stream (the
@@ -94,6 +98,10 @@ struct ClipMetadata {
     bool untestedModel = false;
 
     Projection projection = Projection::DualFisheye;
+    // Projection::EquiAngularCube: where each stream's faces are along its
+    // strip -- the file's own numbers where it states them, else the
+    // reader's table for the camera and mode.
+    orbiscore::EacLayout cubeLayout;
     std::vector<Lens> lenses; // front lens first; the sources are the first part's
     // The clip's files: one part for a clip in one file, the first being
     // `path`'s. `durationMs` is the whole clip's; the other facts below are

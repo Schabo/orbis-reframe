@@ -153,6 +153,19 @@ don't have, so it does nothing on them.
 All of this is read from the `.OSV` itself: a clip copied without its
 `.LRF` and `.SRT` files stabilizes the same.
 
+### On the GoPro MAX
+
+orbis-reframe stabilizes MAX clips from the camera's gyroscope and
+accelerometer, as it does an X5's. The camera didn't stabilize the clips
+it was tested on: the file says its stabilization was off, and the picture
+turns with the camera body. So all the steadying is done here, and every
+mode works as described above. **Horizon lock** levels by the
+accelerometer, so the **Vibration filter** works on MAX clips too, and
+**Direction lock** drifts slowly, as it does on an X5, since its held
+direction comes from the gyroscope alone. The camera also records its own
+idea of its orientation and of gravity; orbis-reframe doesn't use them
+yet.
+
 ### Slow motion and timelapse
 
 A slow-motion clip plays slower than it happened, and a timelapse much

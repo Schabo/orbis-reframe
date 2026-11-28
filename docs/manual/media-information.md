@@ -60,7 +60,8 @@ Only for a series of Interval photos (see
 |---|---|
 | **Mode** | The recording mode: **8K**, **5.7K** or **4K** 360° on the X5, **8K**, **6K** or **4K** on the X6, **5.7K** on the ONE X2, **8K**, **5.2K** or **4K** on the Antigravity A1, **8K**, **6K** or **4K** on the DJI Avata 360. Read from the size of the lens pictures. The X5's 5.7K+ records pictures the same size as 5.7K, so it shows as 5.7K. **Interval photos** for a series of photos. |
 | **Lenses** | The size of each of the two fisheye pictures, in pixels. In a photo they're side by side. |
-| **Sphere** | The size of the whole 360° picture once the two are stitched together, as a flat world-map image. |
+| **Cube strips** | Instead of **Lenses**, for a clip the camera stitched itself (the GoPro MAX's): the size of each of its two video streams, each a strip of three faces of a cube. |
+| **Sphere** | The size of the whole 360° picture once the two are stitched together, as a flat world-map image. For a clip in cube strips, four faces around: 5376×2688 for a GoPro MAX at 5.6K. |
 | **Frame rate** | Frames per second, such as 29.97, 59.94 or 119.88. A series of photos plays a photo a frame at 30. |
 | **Slow motion** | On a clip filmed in slow motion (the Antigravity A1's 4K Slow Motion): the rate the camera filmed at, such as *Filmed at 100 fps*. The file stores the frames at the frame rate above, so the clip plays that much slower than it happened; hover over the row for how much. |
 | **Timelapse** | On a timelapse: how often the camera took a frame, such as *A frame every 2.0 s*; hover over the row for how long the recording took. On a series of photos, the usual time between two, such as *A photo every 10.4 s*. |

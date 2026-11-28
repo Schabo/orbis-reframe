@@ -270,6 +270,18 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
             addValue(tr("Sphere"), QStringLiteral("%1×%2").arg(2 * side).arg(side),
                      tr("The whole 360° picture once the two are stitched together, as a flat "
                         "world-map image."));
+        } else if (!mode.isEmpty() && m.cubeFace > 0) {
+            // Stitched by the camera: two strips of three cube faces, and the
+            // sphere four faces around (as NativeStitchSource makes it).
+            addValue(tr("Mode"), tr("%1 360°").arg(mode),
+                     tr("Read from the size of the camera's cube strips."));
+            addValue(tr("Cube strips"),
+                     tr("2 × %1×%2, three faces each").arg(v.width).arg(v.height),
+                     tr("The camera stitched the picture itself, into a cube of six faces. "
+                        "Each video stream is a strip of three of them, side by side."));
+            addValue(tr("Sphere"), QStringLiteral("%1×%2").arg(4 * m.cubeFace).arg(2 * m.cubeFace),
+                     tr("The whole 360° picture made from the six faces, as a flat world-map "
+                        "image."));
         } else if (!mode.isEmpty()) {
             addValue(tr("Mode"), tr("%1 360°").arg(mode),
                      tr("Read from the size of the lens pictures. 5.7K+ records pictures the "

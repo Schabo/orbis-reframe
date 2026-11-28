@@ -213,6 +213,15 @@ struct SeamBlend {
 // mirror of the CPU path. Populated by FisheyeStitcher::gpuParams(). All
 // angles in radians; matrices row-major 3x3.
 struct StitchGpuParams {
+    // The picture is the camera's own equi-angular cubemap, not two
+    // fisheyes (camera::Projection::EquiAngularCube, the GoPro MAX): 1 =
+    // "lens" i is stream i's strip of three cube faces, fisheyeW x fisheyeH,
+    // laid out as cubeCentre | cubeSide | cubeOverlap say (orbiscore::
+    // EacLayout, the clip's) and sampled with orbiscore::EacCubeStitcher's
+    // map; the lens model, seam and colour fields below are then unused. Not
+    // FisheyeStitcher's: set by the source that opens such a clip.
+    int eacCube = 0;
+    int cubeCentre = 0, cubeSide = 0, cubeOverlap = 0; // px along the strip
     float worldToLens[2][9];
     float outRot[9];
     // The lens model (see LensProjection): thetaPoly 1 = the

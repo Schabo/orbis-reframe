@@ -432,6 +432,7 @@ void MainWindow::syncStitchingPanel()
         m_stitchingPanel->setNoClip();
         m_calibrationChoices = {std::nullopt};
         m_stitchingPanel->setCalibrations({tr("From the camera file")}, {}, 0);
+        m_stitchingPanel->setCameraStitched(false);
         return;
     }
     m_stitchingPanel->setState(c->lensGuard, c->stitchMethod, m_clipFacts->profiles(c->sourcePath));
@@ -470,6 +471,8 @@ void MainWindow::syncStitchingPanel()
         tips << tip(*kept);
     }
     m_stitchingPanel->setCalibrations(labels, tips, current);
+    // Last: it greys out what the calls above set up.
+    m_stitchingPanel->setCameraStitched(m_clipFacts->facts(c->sourcePath).cameraStitched);
 }
 
 std::optional<stitch::LensCalibration> MainWindow::storedLensCalibration(

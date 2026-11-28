@@ -43,6 +43,9 @@ struct ClipProbe {
     // reader opens untested (camera::ClipMetadata::untestedModel); empty
     // otherwise.
     std::string untested_model;
+    // The camera stitched the picture itself (camera::Projection::
+    // EquiAngularCube, the GoPro MAX): no lenses to stitch here.
+    bool camera_stitched = false;
 };
 
 // Probes the clip `clip_path` is, or is part of.

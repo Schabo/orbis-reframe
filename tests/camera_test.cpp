@@ -11,7 +11,10 @@
 // Exit code is the failure count.
 
 #include "ClipMetadata.h"
+#include "GoproReader.h"
 #include "MediaInfo.h"
+#include <orbis-core/stitch/BlurQuads.h>
+#include <orbis-core/stitch/EacCubeStitcher.h>
 #include "NativeStitchSource.h"
 #include "ProbeClip.h"
 #include <orbis-core/stab/GyroStabilizer.h>
@@ -26,6 +29,7 @@ extern "C" {
 #include <libavutil/error.h>
 }
 
+#include <algorithm>
 #include <cerrno>
 #include <cmath>
 #include <cstdio>
@@ -1377,6 +1381,264 @@ void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::pa
     CHECK(camera::ReadClipImu(osv.string()));
 }
 
+// The GoPro reader's table and the file's own layout, with no clip: the
+// MAX's 5.6K is a row (any case in the model's name); another model or
+// size isn't, and gets the MAX's IMU axes and lag with no layout or mode
+// name -- the clip then opens untested. PMOD gives the layout a strip can
+// hold, and nothing for one it can't.
+void testGoproModes()
+{
+    bool known = false;
+    const camera::GoproMode& max = camera::FindGoproMode("GoPro MAX", 4096, 1344, &known);
+    CHECK(known && std::string(max.name) == "5.6K" && std::string(max.imuAxes) == "-y,x,z");
+    CHECK((max.layout == orbiscore::EacLayout{1344, 1376, 64}) && max.pictureLagSec == 0.010);
+    CHECK(max.layout.fits(4096));
+    const camera::GoproMode& max2 = camera::FindGoproMode("GoPro Max2", 4096, 1344, &known);
+    CHECK(!known && std::string(max2.name).empty() && max2.layout.centre == 0);
+    CHECK(std::string(max2.imuAxes) == "-y,x,z" && max2.pictureLagSec == 0.010);
+    camera::FindGoproMode("GoPro Max", 2944, 960, &known);
+    CHECK(!known);
+
+    const auto stated = camera::LayoutFromPmod({32, 1408, 1376}, 4096, 1344);
+    CHECK(stated && (*stated == orbiscore::EacLayout{1344, 1376, 64}));
+    CHECK(!camera::LayoutFromPmod({32, 1408, 1376}, 2944, 960)); // a 192 px wide centre face
+    CHECK(!camera::LayoutFromPmod({32, 1408}, 4096, 1344));
+    CHECK(!camera::LayoutFromPmod({0, 1408, 1376}, 4096, 1344));
+    CHECK(!camera::LayoutFromPmod({700, 1408, 1376}, 4096, 1344)); // an overlap wider than the face
+}
+
+// The GoPro MAX clip, where the sample folder has it: the camera's identity
+// and streams (docs/formats/gopro-max.md), the IMU lined up with the video
+// to the residuals that document measured, the .THM preview, and the .LRV
+// and .THM naming the clip.
+// The picture: the stitch source opens the camera's cubemap through the
+// same NativeStitchSource as every clip, and serves equirect frames at the
+// asked-for size and time, forward and after seeks, with the faces joining
+// up -- on the GPU where there is one, else on the CPU, the two agreeing.
+void testGoproMaxSource(const std::filesystem::path& clip360)
+{
+    const std::string path = clip360.string();
+    auto made = stitch::MakeStitchSource();
+    auto* cube = dynamic_cast<stitch::NativeStitchSource*>(made.get());
+    CHECK(cube);
+    if (!cube)
+        return;
+
+    stitch::PreviewStitchConfig cfg;
+    cfg.width = 1024;
+    cfg.height = 512;
+    CHECK(cube->Open(path, cfg));
+    if (!cube->GetLastError().empty())
+        std::printf("  %s\n", cube->GetLastError().c_str());
+    CHECK(cube->GetInfo().width == 4096 && cube->GetInfo().height == 1344);
+    std::printf("  GoPro MAX source: %s\n",
+                cube->AllGpu() ? "GPU decode + GPU stitch"
+                               : (cube->DecodesOnCpu() ? "CPU decode" : "?"));
+
+    // Opened at the start, as every source is.
+    stitch::Frame f0 = cube->ReadFrame();
+    CHECK(f0.width == 1024 && f0.height == 512 && f0.rgba.size() == 1024u * 512u * 4u);
+    CHECK(f0.timestamp_ms == 0);
+
+    // A seek lands on the first frame at or after the target (25 fps: 40 ms),
+    // and reading on goes forward one frame.
+    stitch::Frame f = cube->GetFrame(5000);
+    CHECK(f.timestamp_ms == 5000 && f.width == 1024);
+    stitch::Frame next = cube->ReadFrame();
+    CHECK(next.timestamp_ms == 5040);
+    // A real picture, not a blank: the frame's luma spread is the scene's.
+    double sum = 0, sq = 0;
+    const size_t n = f.rgba.size() / 4;
+    for (size_t i = 0; i < n; ++i) {
+        const double v = f.rgba[i * 4 + 1];
+        sum += v;
+        sq += v * v;
+    }
+    const double mean = sum / double(n), sd = std::sqrt(sq / double(n) - mean * mean);
+    std::printf("  GoPro MAX equirect @5000 ms: mean %.1f, sd %.1f\n", mean, sd);
+    CHECK(sd > 10.0);
+    // The same frame twice is the same picture.
+    stitch::Frame again = cube->GetFrame(5000);
+    CHECK(again.rgba == f.rgba);
+    // The CPU stitch (no GPU stitch at all) draws the same picture: one
+    // map, two implementations (EacCubeStitcher, the shader's cubeSample).
+    {
+        setenv("ORBIS_NO_GPU_STITCH", "1", 1);
+        stitch::NativeStitchSource cpu;
+        const bool opened = cpu.Open(path, cfg);
+        unsetenv("ORBIS_NO_GPU_STITCH");
+        CHECK(opened && !cpu.AllGpu());
+        stitch::Frame c = cpu.GetFrame(5000);
+        CHECK(c.timestamp_ms == f.timestamp_ms && c.rgba.size() == f.rgba.size());
+        if (c.rgba.size() == f.rgba.size() && !f.rgba.empty()) {
+            double se = 0;
+            for (size_t i = 0; i < f.rgba.size(); i += 4)
+                for (int k = 0; k < 3; ++k) {
+                    const double d = double(f.rgba[i + k]) - double(c.rgba[i + k]);
+                    se += d * d;
+                }
+            const double mse = se / double(f.rgba.size() / 4 * 3);
+            const double psnr = mse > 0 ? 10.0 * std::log10(255.0 * 255.0 / mse) : 99.0;
+            std::printf("  GoPro MAX GPU vs CPU stitch @5000 ms: PSNR %.2f dB\n", psnr);
+            CHECK(psnr > 35.0);
+        }
+    }
+    // The faces join up on the real picture: the jump across every face
+    // boundary of the hard cut is the size of the image's own gradients
+    // (1.0 would be no seam at all; the layout this replaced measured 12-14).
+    {
+        orbiscore::FisheyeDemux demux;
+        std::string derr;
+        const auto meta = camera::ReadClipMetadata(path, &derr);
+        orbiscore::Image s0, s1;
+        orbiscore::FramePts pts;
+        CHECK(meta && demux.open(meta->partSources(), derr) && demux.seekTo(5000, derr) &&
+              demux.readNextPair(s0, s1, &pts, derr));
+        const double ratio = meta ? orbiscore::EacCubeStitcher::SeamRatio(s0, s1, meta->cubeLayout)
+                                  : std::nan("");
+        std::printf("  GoPro MAX face seams @%lld ms: ratio %.2f\n", (long long)pts.ms, ratio);
+        CHECK(std::isfinite(ratio) && ratio < 2.0);
+    }
+    // Past the end: no frame, no error.
+    CHECK(cube->SeekTo(cube->GetInfo().duration_ms + 1000) || !cube->GetLastError().empty());
+    stitch::Frame end = cube->ReadFrame();
+    CHECK(end.rgba.empty());
+}
+
+void testGoproMax(const std::filesystem::path& clip360, const std::filesystem::path& dir)
+{
+    std::string err;
+    const auto clip = camera::ReadClipMetadata(clip360.string(), &err);
+    CHECK(clip);
+    if (!clip) {
+        std::printf("  %s\n", err.c_str());
+        return;
+    }
+    CHECK(clip->maker == "GoPro" && clip->model == "GoPro Max");
+    CHECK(clip->firmware == "H19.03.02.02.00" && !clip->serial.empty());
+    CHECK(clip->projection == camera::Projection::EquiAngularCube);
+    CHECK(clip->lensWidth == 4096 && clip->lensHeight == 1344 && std::abs(clip->fps - 25) < 1e-6);
+    CHECK(clip->captureMode == "5.6K" && !clip->untestedModel);
+    // The cube layout as the file's PMOD states it, the table's 5.6K row.
+    CHECK((clip->cubeLayout == orbiscore::EacLayout{1344, 1376, 64}));
+    CHECK(clip->recordedLocal == "2025-04-14T15:46:51");
+    // The two cube streams, in file order; no lens calibration (the EAC
+    // path's geometry is fixed by the projection).
+    CHECK(clip->lenses.size() == 2 && !clip->calibrated);
+    CHECK(clip->lenses[0].source.stream == 0 && clip->lenses[1].source.stream == 1);
+    CHECK(clip->parts.size() == 1 && clip->parts[0].lenses.size() == 2);
+    CHECK(std::filesystem::path(clip->proxyPath).extension() == ".LRV");
+    // The motion: the gyro at its measured rate (801.6 Hz over the whole
+    // track, not the nominal 800).
+    CHECK(clip->hasMotion && std::abs(clip->imuRateHz - 801.6) < 1.0);
+
+    camera::MediaInfo info;
+    CHECK(camera::ProbeMediaInfo(clip360.string(), info, err) && info.cameraClip &&
+          info.proxyPath == clip->proxyPath);
+    // Media information shows the cube strips, not two fisheyes.
+    CHECK(info.captureMode == "5.6K" && info.cubeFace == 1344);
+    // Stitched by the camera: the Stitching panel greys out for it.
+    stitch::ClipProbe probe;
+    CHECK(stitch::ProbeClip(clip360.string(), probe, err) && probe.camera_stitched &&
+          probe.untested_model.empty());
+
+    const auto imu = camera::ReadClipImu(clip360.string());
+    CHECK(imu);
+    if (imu) {
+        // Body axes (MTRX applied), mapped to the stitch's world by the
+        // table's 5.6K row (measured from the picture's own turn,
+        // docs/formats/gopro-max.md *Gyro axes*).
+        CHECK(imu->axisMap == "-y,x,z");
+        CHECK(imu->hasOffset && imu->captureScale == 1.0);
+        // ~800 Hz over 64.56 s of video.
+        CHECK(imu->samples.size() > 50000 && imu->samples.size() < 53000);
+        bool ordered = true;
+        size_t badAt = 0;
+        uint64_t badFrom = 0, badTo = 0;
+        for (size_t i = 1; i < imu->samples.size(); ++i)
+            if (imu->samples[i].timestamp <= imu->samples[i - 1].timestamp) {
+                if (ordered) {
+                    badAt = i;
+                    badFrom = imu->samples[i - 1].timestamp;
+                    badTo = imu->samples[i].timestamp;
+                }
+                ordered = false;
+            }
+        if (!ordered)
+            std::printf("  out of order at sample %zu: %llu -> %llu\n", badAt,
+                        (unsigned long long)badFrom, (unsigned long long)badTo);
+        CHECK(ordered);
+        // The gyro actually moves (a handheld clip) and the accelerometer
+        // rides along at ~1 g (raw / SCAL). The clip is tossed about, so the
+        // extremes are meaningless (measured 0.05-9.7 g: free fall and
+        // impacts); the percentiles are the honest check.
+        double gyroMax = 0.0;
+        std::vector<double> accelMag;
+        accelMag.reserve(imu->samples.size());
+        for (const orbiscore::ImuSample& s : imu->samples) {
+            gyroMax = std::max(gyroMax, std::abs(s.gyro[0]) + std::abs(s.gyro[1]) +
+                                           std::abs(s.gyro[2]));
+            accelMag.push_back(std::sqrt(s.accel[0] * s.accel[0] + s.accel[1] * s.accel[1] +
+                                         s.accel[2] * s.accel[2]));
+        }
+        const size_t nAcc = accelMag.size();
+        std::nth_element(accelMag.begin(), accelMag.begin() + nAcc / 10, accelMag.end());
+        const double accelP10 = accelMag[nAcc / 10];
+        std::nth_element(accelMag.begin(), accelMag.begin() + nAcc * 9 / 10, accelMag.end());
+        const double accelP90 = accelMag[nAcc * 9 / 10];
+        CHECK(gyroMax > 0.5);
+        CHECK(accelP10 > 0.85 && accelP90 < 1.15);
+        // The clock: one frameTimes pair per sensor sample (63 for this
+        // clip), and the fit the format note measured -- slope within
+        // 10 ppm of 1.0, residuals under 1 ms against the packet PTS.
+        CHECK(imu->frameTimes.size() == 63);
+        if (imu->frameTimes.size() >= 2) {
+            const size_t n = imu->frameTimes.size();
+            double mx = 0.0, my = 0.0;
+            for (const orbiscore::FrameTime& f : imu->frameTimes) {
+                mx += f.videoSec / static_cast<double>(n);
+                my += f.trackSec / static_cast<double>(n);
+            }
+            double sxx = 0.0, sxy = 0.0;
+            for (const orbiscore::FrameTime& f : imu->frameTimes) {
+                sxx += (f.videoSec - mx) * (f.videoSec - mx);
+                sxy += (f.videoSec - mx) * (f.trackSec - my);
+            }
+            const double slope = sxy / sxx, intercept = my - slope * mx;
+            CHECK(std::abs(slope - 1.0) < 1e-5);
+            double maxRes = 0.0;
+            for (const orbiscore::FrameTime& f : imu->frameTimes)
+                maxRes = std::max(maxRes, std::abs(f.trackSec - (slope * f.videoSec + intercept)));
+            CHECK(maxRes < 1e-3);
+            CHECK(std::abs(imu->offsetSec - imu->frameTimes.front().trackSec) < 1e-12);
+        }
+    }
+
+    const auto thumb = camera::ReadClipThumbnail(clip360.string());
+    CHECK(thumb && !thumb->flat && thumb->width == 704 && thumb->height == 352);
+
+    // The MAX records no GPS.
+    const camera::ClipTelemetry tele = camera::ReadClipTelemetry(clip360.string());
+    CHECK(!tele.gps);
+
+    // The proxy names the clip; the preview names nothing (a clip claims
+    // only its proxy and its lens files), and the clip names itself.
+    std::filesystem::path sib = clip360;
+    CHECK(camera::ClipFileOf(sib.replace_extension(".LRV").string()) == clip360.string());
+    sib = clip360;
+    CHECK(camera::ClipFileOf(sib.replace_extension(".THM").string()) ==
+          sib.replace_extension(".THM").string());
+    CHECK(camera::ClipFileOf(clip360.string()) == clip360.string());
+
+    // A plain video the reader doesn't know stays not-a-clip: the maker
+    // note alone must not claim a Hero's single-stream file.
+    const std::filesystem::path heroDir = dir / "gopro_not_mine";
+    std::filesystem::create_directories(heroDir);
+    CHECK(!camera::ReadClipMetadata((heroDir / "nope.360").string(), &err));
+
+    testGoproMaxSource(clip360);
+}
+
 int main(int argc, char** argv)
 {
     const auto dir = std::filesystem::temp_directory_path() / "orbis_camera_test";
@@ -1399,6 +1661,7 @@ int main(int argc, char** argv)
     testMissingParts(dir);
     testIntervalPhotos(dir);
     testUntestedModel(dir);
+    testGoproModes();
     if (argc > 1) {
         // Found by name: the sample folder is sorted into sub-folders by
         // whoever keeps it, and the test shouldn't stop running when it is.
@@ -1415,6 +1678,21 @@ int main(int argc, char** argv)
             testDjiAvata360(dji, dir);
         else
             std::printf("  (DJI Avata 360 sample clip not here: skipped)\n");
+        // The GoPro MAX clips (docs/formats/gopro-max.md): the clip
+        // found by name wherever the folder keeps it.
+        std::filesystem::path gopro;
+        std::error_code ec2;
+        const std::filesystem::path groot = std::filesystem::path(argv[1]) / "gopro-max";
+        for (std::filesystem::recursive_directory_iterator it(groot, ec2), end; !ec2 && it != end;
+             it.increment(ec2))
+            if (it->path().filename() == "GS012267.360") {
+                gopro = it->path();
+                break;
+            }
+        if (!gopro.empty())
+            testGoproMax(gopro, dir);
+        else
+            std::printf("  (GoPro MAX sample clip not here: skipped)\n");
     }
     if (!g_failures)
         std::filesystem::remove_all(dir);
