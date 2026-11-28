@@ -224,6 +224,7 @@ int main(int argc, char *argv[])
         window.showLibrary();
 
     window.show();
+    window.restoreStartupWindowState();
     // The GPU smoke test (tests/release/gpu_smoke.sh) drives the app from a
     // script; nothing of it exists without the variable.
     if (!qEnvironmentVariableIsEmpty("ORBIS_SMOKE_TEST"))

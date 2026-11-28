@@ -38,6 +38,8 @@
 class QAction;
 class QTimer;
 class QCloseEvent;
+class QMoveEvent;
+class QResizeEvent;
 class QShortcut;
 class QSplitter;
 class QStackedWidget;
@@ -121,9 +123,15 @@ public:
     void openProject(const QString &projectPath);
     // The start screen (no project open): the project library.
     void showLibrary();
+    // Apply the saved maximized state after show(). Wayland needs the normal
+    // window shown first, or it uses the maximized size as the size to return
+    // to after de-maximizing.
+    void restoreStartupWindowState();
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    void moveEvent(QMoveEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
     // Installed on the application: a text/number field (the panels' spin
     // boxes) claims Space, [ ], K, Delete... while it has focus, so the
     // editor's shortcuts go dead. A click anywhere outside the field --
@@ -132,6 +140,12 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
+    // Remember the window's geometry while it is neither maximized nor in
+    // full screen; a close saves it as the size to return to. The update waits
+    // one timer turn: KDE Wayland sends the resize to the maximized size
+    // before it reports the maximized state.
+    void noteNormalGeometry();
+    void scheduleNormalGeometry();
     // The constructor's parts, in the order it runs them: the viewport (and
     // the widget holding its place), the edit model, the window's layout and
     // pages, the playback thread, then each area's wiring and the menus.
@@ -679,6 +693,11 @@ private:
     double m_previewRate = 1.0; // the player bar's speed; the sound plays at 1x only
     bool m_fullScreen = false;  // setFullScreenView()
     bool m_wasMaximized = false; // before full screen
+    bool m_startMaximized = false; // saved state, applied after show()
+    // The window's size and place while it's neither maximized nor in full
+    // screen; the next start applies them before a saved maximized state.
+    QRect m_normalGeometry;
+    QTimer *m_normalGeometryTimer = nullptr; // commits a move or resize after it settles
     QTimer *m_playerBarHide = nullptr; // full screen: hides the player bar
     QTimer *m_mediaCheck = nullptr; // recheckMissingMedia() while the app is in front
     // A sync / seam result arrived while playing; applied on the next pause.
