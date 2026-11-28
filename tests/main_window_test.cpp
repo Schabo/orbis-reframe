@@ -935,9 +935,8 @@ void testRemoveNoBackupDialog(const Ctx &c, const RemovalControls &ui)
         else
             CHECK(false);
         const QSize first = dialog->size();
-        // The app's message boxes are 400 pixels wide here. The custom layout
-        // alone is narrower, so the dialog must not start at its minimum.
-        initialWide = first.width() >= 400 && first.width() > dialog->minimumWidth();
+        // The layout alone would wrap the message into a narrow column.
+        initialWide = dialog->minimumWidth() >= 440 && first.width() >= dialog->minimumWidth();
         dialog->resize(first.width() + 120, first.height() + 80);
         grewBefore = dialog->width() > first.width() && dialog->height() > first.height();
         auto *showDetails =
@@ -1054,148 +1053,36 @@ void testRemoveBackupAudio(const Ctx &c, const RemovalControls &ui)
 
 void testRemoveTimelineGuard(const Ctx &c, const RemovalControls &ui)
 {
-    // The file is only on an audio track. The removal actions stay enabled
-    // for it; their dialog lists it and deletes nothing.
+    // The file is only on an audio track. The panel disables the removal
+    // actions for it; a request that still names it is refused, says which
+    // file stays, and deletes nothing.
     const QString usedClip = addRemovalFile(c, ui.pool, QStringLiteral("used-timeline.wav"));
     const QString freeClip = addRemovalFile(c, ui.pool, QStringLiteral("free-timeline.wav"));
     testmedia::writeWav(usedClip.toStdString(), testmedia::kWavRate, [](int) { return 0.0; });
     const int usedTrack = c.timeline->addTrack(Track::Kind::Audio);
     CHECK(usedTrack != 0);
-    const int usedClipId = c.timeline->addAudioClip(usedTrack, usedClip, 1000, 500);
-    CHECK(usedClipId != 0);
+    CHECK(c.timeline->addAudioClip(usedTrack, usedClip, 1000, 500) != 0);
     ui.panel->setInUse({usedClip});
     ui.panel->selectPaths({usedClip});
-    CHECK(ui.trash->isEnabled() && ui.wipe->isEnabled());
-    CHECK(seekTo(c, 0));
+    CHECK(!ui.trash->isEnabled() && !ui.wipe->isEnabled());
+    CHECK(ui.trash->toolTip().contains(QStringLiteral("timeline")));
 
     QString notice, noticeTitle;
-    bool hasGo = false, hasClose = false;
     whenDialog([&](QWidget *w) {
         auto *box = qobject_cast<QMessageBox *>(w);
         CHECK(box);
-        if (!box) {
-            w->close();
-            return;
+        if (box) {
+            notice = box->text();
+            noticeTitle = box->windowTitle();
         }
-        notice = box->text();
-        noticeTitle = box->windowTitle();
-        for (QAbstractButton *b : box->buttons()) {
-            const QString text = b->text().remove(QLatin1Char('&'));
-            if (text == QLatin1String("Set cursor to clip"))
-                hasGo = true;
-            if (text == QLatin1String("Close")) {
-                hasClose = true;
-                b->click();
-            }
-        }
+        w->close();
     });
     emit ui.panel->deletePermanentlyRequested({usedClip, freeClip});
     CHECK(noticeTitle == QStringLiteral("Files on the timeline"));
     CHECK(notice.contains(QStringLiteral("used-timeline.wav")));
     CHECK(!notice.contains(QStringLiteral("free-timeline.wav")));
-    CHECK(hasGo && hasClose);
     CHECK(QFile::exists(usedClip) && QFile::exists(freeClip) && ui.pool->contains(usedClip) &&
           ui.pool->contains(freeClip));
-    CHECK(c.timelineWidget->playhead() == 0);
-
-    // Set cursor to clip goes to the first listed file's clip.
-    bool jumped = false, hasCloseOnTrash = false;
-    QString trashNotice, trashTitle;
-    whenDialog([&](QWidget *w) {
-        auto *box = qobject_cast<QMessageBox *>(w);
-        CHECK(box);
-        if (!box) {
-            w->close();
-            return;
-        }
-        trashNotice = box->text();
-        trashTitle = box->windowTitle();
-        for (QAbstractButton *b : box->buttons()) {
-            const QString text = b->text().remove(QLatin1Char('&'));
-            if (text == QLatin1String("Close"))
-                hasCloseOnTrash = true;
-            if (text == QLatin1String("Set cursor to clip")) {
-                jumped = true;
-                b->click();
-                return;
-            }
-        }
-    });
-    emit ui.panel->moveToTrashRequested({usedClip, freeClip});
-    CHECK(jumped);
-    CHECK(hasCloseOnTrash);
-    CHECK(trashTitle == QStringLiteral("Files on the timeline"));
-    CHECK(trashNotice.contains(QStringLiteral("used-timeline.wav")));
-    CHECK(!trashNotice.contains(QStringLiteral("free-timeline.wav")));
-    CHECK(c.timelineWidget->playhead() == 500);
-    CHECK(c.timelineWidget->selectedTrackClipId() == usedClipId);
-    CHECK(QFile::exists(usedClip) && QFile::exists(freeClip) && ui.pool->contains(usedClip) &&
-          ui.pool->contains(freeClip));
-}
-
-// Show in timeline selects a main-track clip, an audio-track clip and an
-// overlay clip, and seeks to each clip's start. The audio file is only on an
-// audio track.
-void testShowInTimelineMainAudioAndOverlay(const Ctx &c)
-{
-    std::printf("  show in timeline, main / audio / overlay\n");
-    auto *panel = find<MediaPoolPanel>(c.w, "mediaPoolPanel");
-    auto *show = action(c, "mediaShowInTimelineAction");
-    if (!panel || !show || c.timeline->count() == 0)
-        return;
-    const QString mainPath = c.timeline->clipAt(0).sourcePath;
-    const int mainId = c.timeline->clipAt(0).id;
-    // The take's companion went in the test before: put it back so the
-    // main-track file is on the disk.
-    if (const MediaItem *mainItem = c.project->mediaPool()->item(mainPath))
-        for (const QString &file : mainItem->companions)
-            writeFile(file);
-    c.project->recheckMissingMedia();
-    panel->setInUse({mainPath});
-    panel->selectPaths({mainPath});
-    CHECK(show->isEnabled());
-    show->trigger();
-    CHECK(c.timelineWidget->playhead() == 0);
-    CHECK(c.timelineWidget->activeClipId() == mainId);
-
-    const QString wav = QDir(c.dir).filePath(QStringLiteral("show-timeline.wav"));
-    testmedia::writeWav(wav.toStdString(), testmedia::kWavRate, [](int) { return 0.0; });
-    MediaItem item;
-    item.path = wav;
-    item.kind = MediaItem::Kind::Audio;
-    item.durationMs = 1000;
-    CHECK(c.project->mediaPool()->add(item));
-    const int trackId = c.timeline->addTrack(Track::Kind::Audio);
-    CHECK(trackId != 0);
-    const int trackClipId = c.timeline->addAudioClip(trackId, wav, 1000, 500);
-    CHECK(trackClipId != 0);
-    panel->setInUse({mainPath, wav});
-    panel->selectPaths({wav});
-    CHECK(show->isEnabled());
-    show->trigger();
-    CHECK(c.timelineWidget->playhead() == 500);
-    CHECK(c.timelineWidget->selectedTrackClipId() == trackClipId);
-
-    const QString overlay = QDir(c.dir).filePath(QStringLiteral("show-timeline.mp4"));
-    testmedia::VideoSpec spec;
-    spec.frames = 1;
-    CHECK(testmedia::writeVideo(overlay.toStdString(), spec));
-    MediaItem overlayItem;
-    overlayItem.path = overlay;
-    overlayItem.kind = MediaItem::Kind::Video;
-    overlayItem.durationMs = 1000;
-    CHECK(c.project->mediaPool()->add(overlayItem));
-    const int overlayTrack = c.timeline->addTrack(Track::Kind::Video);
-    CHECK(overlayTrack != 0);
-    const int overlayClipId =
-        c.timeline->addVideoClip(overlayTrack, overlay, 1000, 1000, spec.width, spec.height);
-    CHECK(overlayClipId != 0);
-    panel->setInUse({mainPath, wav, overlay});
-    panel->selectPaths({overlay});
-    CHECK(show->isEnabled());
-    show->trigger();
-    CHECK(c.timelineWidget->playhead() == 1000);
-    CHECK(c.timelineWidget->selectedTrackClipId() == overlayClipId);
 }
 
 void testRemoveFromFileSystem(const Ctx &c)
@@ -4359,7 +4246,6 @@ int main(int argc, char **argv)
             testNaturalReachesViewport(c);
             testEmptyTimelineStops(c);
             testOpenTakeFile(c); // replaces the project
-            testShowInTimelineMainAudioAndOverlay(c);
             testRemoveFromFileSystem(c);
         }
     }

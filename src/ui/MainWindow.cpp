@@ -392,8 +392,6 @@ void MainWindow::setupSourcesSidebar()
     });
     connect(m_project->mediaPool(), &MediaPool::missingChanged, this, previewGone);
     connect(m_mediaPanel, &MediaPoolPanel::locateRequested, this, &MainWindow::locateMedia);
-    connect(m_mediaPanel, &MediaPoolPanel::showInTimelineRequested, this,
-            &MainWindow::showMediaInTimeline);
     connect(m_mediaPanel, &MediaPoolPanel::moveToTrashRequested, this,
             &MainWindow::moveMediaToTrash);
     connect(m_mediaPanel, &MediaPoolPanel::deletePermanentlyRequested, this,
@@ -3313,27 +3311,6 @@ void MainWindow::locateMedia(const QString &path)
     m_mediaImport->showRelinked(relinks);
 }
 
-void MainWindow::showMediaInTimeline(const QString &path)
-{
-    for (int i = 0; i < m_timeline->count(); ++i) {
-        const ClipItem &clip = m_timeline->clipAt(i);
-        if (clip.sourcePath != path)
-            continue;
-        selectVideoClip(clip.id);
-        navigateTo(m_timeline->clipToTimeline(i, 0), true);
-        return;
-    }
-    for (int i = 0; i < m_timeline->trackCount(); ++i) {
-        for (const TrackClip &clip : m_timeline->trackAt(i).clips) {
-            if (clip.sourcePath != path)
-                continue;
-            selectTrackClip(clip.id);
-            navigateTo(clip.startMs, true);
-            return;
-        }
-    }
-}
-
 namespace {
 
 // Every file the timeline plays: the main video track's clips, and the
@@ -3474,11 +3451,9 @@ RemovalDialog::RemovalDialog(QWidget *parent, const QString &message,
     addFileList(shown);
     addButtons(toTrash);
 
-    // The app's message boxes are 400 pixels wide at the default font. The
-    // custom layout alone is narrower, so start at that width.
-    constexpr int kBoxWidth = 400;
-    const QSize hint = sizeHint();
-    resize(std::max(kBoxWidth, hint.width()), hint.height());
+    // The layout alone wraps the message into a narrow column; give it the
+    // room the app's other dialogs have.
+    setMinimumWidth(440);
 }
 
 void RemovalDialog::addFileList(const QStringList &shown)
@@ -3557,8 +3532,7 @@ RemovalResult removeTakeFiles(const QStringList &files, bool toTrash)
 }
 
 // An item whose files all went leaves the pool; one with a file that
-// couldn't be removed stays (it is flagged missing by the next check). A
-// backup sound file of its own is an item too.
+// couldn't be removed stays. A backup sound file of its own is an item too.
 void removeGonePoolItems(MediaPool &pool, const QStringList &paths, const QStringList &files,
                          const QSet<QString> &gone)
 {
@@ -3589,33 +3563,19 @@ void warnFailedRemovals(QWidget *parent, const QStringList &failed)
                              .arg(failed.join(QLatin1Char('\n'))));
 }
 
-void tellFilesOnTimeline(QWidget *parent, const QStringList &files,
-                         const std::function<void(const QString &)> &goToClip)
+// The panel keeps the actions disabled for a file on the timeline; a request
+// that still names one says which file stays.
+void tellFilesOnTimeline(QWidget *parent, const QStringList &files)
 {
     QStringList names;
     for (const QString &file : files)
         names << QFileInfo(file).fileName();
-    QString text =
-        files.size() == 1
-            ? MainWindow::tr("This file is used on the timeline. Remove it from the timeline "
-                             "first:")
-            : MainWindow::tr("These files are used on the timeline. Remove them from the "
-                             "timeline first:");
-    text += QStringLiteral("\n\n") + names.join(QLatin1Char('\n'));
-    if (files.size() > 1)
-        text += QStringLiteral("\n\n") +
-                MainWindow::tr("Set cursor to clip goes to the first file's clip.");
-
-    QMessageBox box(QMessageBox::Information, MainWindow::tr("Files on the timeline"), text,
-                    QMessageBox::NoButton, parent);
-    QPushButton *go =
-        box.addButton(MainWindow::tr("&Set cursor to clip"), QMessageBox::ActionRole);
-    QPushButton *close = box.addButton(MainWindow::tr("&Close"), QMessageBox::RejectRole);
-    box.setDefaultButton(close);
-    box.setEscapeButton(close);
-    box.exec();
-    if (box.clickedButton() == go)
-        goToClip(files.first());
+    const QString text =
+        (files.size() == 1
+             ? MainWindow::tr("This file is used on the timeline and was not removed:")
+             : MainWindow::tr("These files are used on the timeline and were not removed:")) +
+        QStringLiteral("\n\n") + names.join(QLatin1Char('\n'));
+    QMessageBox::information(parent, MainWindow::tr("Files on the timeline"), text);
 }
 
 } // namespace
@@ -3638,8 +3598,7 @@ void MainWindow::removeMediaFromDisk(const QStringList &paths, bool toTrash)
     QStringList blockedFiles;
     if (!keepRemovableFiles(files, used, &blockedFiles)) {
         if (!blockedFiles.isEmpty())
-            tellFilesOnTimeline(this, blockedFiles,
-                                [this](const QString &path) { showMediaInTimeline(path); });
+            tellFilesOnTimeline(this, blockedFiles);
         return;
     }
     if (!confirmRemoveFiles(this, files, toTrash))

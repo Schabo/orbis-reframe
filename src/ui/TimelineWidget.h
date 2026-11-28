@@ -265,9 +265,7 @@ public:
     void setPlayhead(qint64 timelineMs);
     qint64 playhead() const { return m_playheadMs; }
     void setActiveClip(int clipId); // -1 = none
-    int activeClipId() const { return m_activeClipId; }
     void setSelectedTrackClip(int clipId); // -1 = none; does not emit
-    int selectedTrackClipId() const { return m_selectedAudioId; }
     void setCanPasteGrade(bool canPaste);  // a colour grade has been copied
     void setCanPasteStabilization(bool canPaste); // a stabilization setting has been copied
     // A video track's own sound tracks folded away under it (view only;
