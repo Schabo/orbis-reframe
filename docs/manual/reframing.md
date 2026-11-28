@@ -317,14 +317,16 @@ and the easing of each keyframe.
    takes the keyframe.
 3. Click **Paste keyframe** in the **Reframe** section. orbis-reframe writes
    the copied view and easing at the playhead. A keyframe within 0.15 seconds
-   is replaced.
+   of a pasted position is removed before the copy lands.
 
 To copy a selection, select the keyframes on the clip's key lane (see
 *Keyframes* above), right-click the clip and choose **Copy keyframes (N)**.
 The selection stays after the copy. The first keyframe lands at the playhead.
 The later keyframes keep their distance from it. Keyframes at 1.0 s and 3.0 s
 pasted at 2.5 s land at 2.5 s and 4.5 s. A keyframe within 0.15 seconds of a
-target position is replaced there.
+target position is removed before the block lands, so the block keeps its own
+spacing. Keyframes that would land outside the clip's trim are not pasted.
+orbis-reframe tells you how many.
 
 **Paste keyframes (N)** in the clip's menu does the same at the playhead, when
 the playhead is inside that clip. It writes the copy on the clip you

@@ -295,7 +295,7 @@ ReframePanel::ReframePanel(QWidget *parent)
     setClip(false);
     setPose(ReframePose{});
     setPaneLayout(pane::Layout::Single);
-    setKeyframeActions(false, false);
+    setKeyframeActions(false, 0);
 
     connect(m_yaw, &QDoubleSpinBox::valueChanged, this, [this](double v) {
         edited([v](ReframePose &p) { p.yaw = static_cast<float>(v * kDegToRad); });
@@ -539,10 +539,10 @@ void ReframePanel::setTrackRunning(bool running)
     updateKeyframeActions();
 }
 
-void ReframePanel::setKeyframeActions(bool atKeyframe, bool canPaste)
+void ReframePanel::setKeyframeActions(bool atKeyframe, int copiedCount)
 {
     m_atKeyframe = atKeyframe;
-    m_canPasteKey = canPaste;
+    m_copiedKeyCount = copiedCount;
     updateKeyframeActions();
 }
 
@@ -550,7 +550,9 @@ void ReframePanel::updateKeyframeActions()
 {
     const bool live = m_hasClip && !m_flat && !m_trackRunning;
     m_copyKey->setEnabled(live && m_atKeyframe);
-    m_pasteKey->setEnabled(live && m_canPasteKey);
+    m_pasteKey->setText(m_copiedKeyCount > 1 ? tr("Paste keyframes (%1)").arg(m_copiedKeyCount)
+                                            : tr("Paste keyframe"));
+    m_pasteKey->setEnabled(live && m_copiedKeyCount > 0);
 }
 
 void ReframePanel::setTrackStatus(const QString &status)
