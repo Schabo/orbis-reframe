@@ -567,6 +567,9 @@ private:
     // and shortcuts work only while it's shown.
     void showEditor();
     void setEditorActive(bool active);
+    // The editor's Delete / Backspace shortcuts: off while the Media tab or
+    // the project library has the focus (each removes its own selection).
+    void updateDeleteShortcuts();
     // No clip: the panels' no-clip state, the controller idle.
     void bindEmptyTimeline();
     // Plate scans and waveforms in the project folder's cache/ (the user
@@ -603,6 +606,9 @@ private:
     EffectsPanel *m_effectsPanel = nullptr;
     MediaImporter *m_mediaImport = nullptr; // Import files… / folder…, drops, Locate file…
     QList<QShortcut *> m_editorShortcuts;
+    // The editor's Delete and Backspace, among m_editorShortcuts.
+    QList<QShortcut *> m_deleteShortcuts;
+    bool m_editorActive = false;
     QActionGroup *m_previewSize = nullptr;
     bool m_playFromProxies = false; // View ▸ Play from preview files (QSettings player/proxies)
     QActionGroup *m_proxyGroup = nullptr; // its Never / Always

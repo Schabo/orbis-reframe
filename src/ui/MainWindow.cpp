@@ -134,6 +134,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     setupMenus();
     setupViewMenu();
     setupKeyboardShortcuts();
+    connect(qApp, &QApplication::focusChanged, this, [this] { updateDeleteShortcuts(); });
     connectController();
     connectPlayerBar();
     setupMediaCheck();
@@ -1436,6 +1437,9 @@ void MainWindow::connectFullScreen()
 
 MainWindow::~MainWindow()
 {
+    // ~QWidget clears the focus after the members are gone; the handler must
+    // not run then.
+    disconnect(qApp, &QApplication::focusChanged, this, nullptr);
     delete m_measurements; // waits for a running one
     m_measurements = nullptr;
     delete m_exports; // waits for a screenshot being saved
@@ -2412,8 +2416,25 @@ void MainWindow::addKey(const QString &group, const QString &what,
         sc->setAutoRepeat(true);
         connect(sc, &QShortcut::activated, this, fn);
         m_editorShortcuts.push_back(sc);
+        // The full sequence, so a future binding with a modifier stays on.
+        const bool deleteKey = seq == QKeySequence(Qt::Key_Delete) ||
+                               seq == QKeySequence(Qt::Key_Backspace);
+        if (deleteKey)
+            m_deleteShortcuts.push_back(sc);
     }
     m_keyHelp.append({group, what, keys, keysLabel});
+}
+
+void MainWindow::updateDeleteShortcuts()
+{
+    // Delete and Backspace act on the focused view: the Media tab's list or
+    // grid removes its selection, as does the project library. Two enabled
+    // matches make Qt report an ambiguous shortcut and neither runs.
+    const QWidget *focus = QApplication::focusWidget();
+    const bool otherView = (m_mediaPanel && m_mediaPanel->isAncestorOf(focus)) ||
+                           (m_libraryPage && m_libraryPage->isAncestorOf(focus));
+    for (QShortcut *sc : std::as_const(m_deleteShortcuts))
+        sc->setEnabled(m_editorActive && !otherView);
 }
 
 void MainWindow::setupViewMenu()
@@ -2637,7 +2658,8 @@ void MainWindow::setupKeyboardShortcuts()
            {QKeySequence(Qt::Key_S)}, [this] { splitAtPlayhead(); });
     addKey(edit,
            tr("Delete the keyframes selected on the timeline, else the selected clip or "
-              "transition, else the reframe keyframe at the playhead"),
+              "transition, else the reframe keyframe at the playhead (in the Media tab: remove "
+              "the selected file)"),
            {QKeySequence(Qt::Key_Delete), QKeySequence(Qt::Key_Backspace)},
            [this] { deleteAtPlayhead(); });
     addKey(edit,

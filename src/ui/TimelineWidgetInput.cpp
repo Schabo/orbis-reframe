@@ -190,6 +190,8 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
         QWidget::mousePressEvent(e);
         return;
     }
+    // Some platforms don't give a click focus from the policy alone.
+    setFocus(Qt::MouseFocusReason);
     m_pressPos = m_lastDragPos = e->pos();
     m_pressMs = timelineMsAt(e->pos().x());
     m_dragMoved = false;
