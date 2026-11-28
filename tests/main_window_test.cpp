@@ -16,8 +16,10 @@
 #include "ClipBackend.h"
 #include "ClipFactsCache.h"
 #include "ClipMeasurements.h"
+#include "ClipMetadata.h"
 #include "MainWindow.h"
 #include "MediaImporter.h"
+#include "MediaRemoval.h"
 #include "panels/GaugePanel.h"
 #include "SettingsPanel.h"
 #include "SettingsSidebar.h"
@@ -77,6 +79,7 @@
 #include <QStackedWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTextEdit>
 #include <QThread>
 #include <QTimer>
 #include <QToolButton>
@@ -382,28 +385,48 @@ void failOnDialog(int ms)
     timer->start();
 }
 
-// Presses the message box's button whose text has `text` (mnemonics ignored).
-// When `shows` isn't empty, the box's text must contain it.
-void answerMessageBox(const QString &text, const QString &shows = {})
+// Presses the dialog's button whose text has `text` (mnemonics ignored). A
+// message box answers from its own text and details; the media removal
+// confirmation is a QDialog with a text label and a details editor.
+// `shows` must be in the text. `details` and `message` get the details and
+// the text when they aren't null.
+void answerMessageBox(const QString &text, const QString &shows = {},
+                      QString *details = nullptr, QString *message = nullptr)
 {
-    whenDialog([text, shows](QWidget *w) {
+    whenDialog([text, shows, details, message](QWidget *w) {
         auto *box = qobject_cast<QMessageBox *>(w);
-        CHECK(box);
-        if (!box) {
+        QString boxText, boxDetails;
+        if (box) {
+            boxText = box->text();
+            boxDetails = box->detailedText();
+        } else {
+            if (auto *label = w->findChild<QLabel *>(QStringLiteral("mediaRemovalText")))
+                boxText = label->text();
+            if (auto *edit = w->findChild<QTextEdit *>(QStringLiteral("mediaRemovalDetails")))
+                boxDetails = edit->toPlainText();
+        }
+        CHECK(box || !boxText.isEmpty());
+        if (!box && boxText.isEmpty()) {
             w->close();
             return;
         }
         if (!shows.isEmpty())
-            CHECK(box->text().contains(shows));
-        for (QAbstractButton *b : box->buttons())
+            CHECK(boxText.contains(shows));
+        if (details)
+            *details = boxDetails;
+        if (message)
+            *message = boxText;
+        const QList<QAbstractButton *> buttons =
+            box ? box->buttons() : w->findChildren<QAbstractButton *>();
+        for (QAbstractButton *b : buttons)
             if (b->text().remove(QLatin1Char('&')) == text) {
                 b->click();
                 return;
             }
         std::printf("FAIL  no \"%s\" button in \"%s\"\n", qPrintable(text),
-                    qPrintable(box->text()));
+                    qPrintable(boxText));
         ++g_failures;
-        box->reject();
+        w->close();
     });
 }
 
@@ -725,83 +748,90 @@ void testWindowGeometry(const Ctx &c)
 
 // The Media tab's two file-system removals: both ask first, Cancel leaves
 // the file, and a take loses its companion files too.
-void testRemoveFromFileSystem(const Ctx &c)
-{
-    std::printf("  remove from file system\n");
-    auto *trash = action(c, "mediaMoveToTrashAction");
-    auto *wipe = action(c, "mediaDeletePermanentlyAction");
-    auto *panel = c.w->findChild<MediaPoolPanel *>();
-    MediaPool *pool = c.project->mediaPool();
-    if (!trash || !wipe || !panel)
-        return;
-    const auto add = [&](const QString &name, const QStringList &companions = {}) {
-        const QString path = QDir(c.dir).filePath(name);
-        writeFile(path);
-        for (const QString &file : companions)
-            writeFile(QDir(c.dir).filePath(file));
-        MediaItem item;
-        item.path = path;
-        item.kind = MediaItem::Kind::Audio;
-        item.durationMs = 1000;
-        for (const QString &file : companions)
-            item.companions << QDir(c.dir).filePath(file);
-        CHECK(pool->add(item));
-        return path;
-    };
+struct RemovalControls {
+    QAction *trash = nullptr;
+    QAction *wipe = nullptr;
+    MediaPoolPanel *panel = nullptr;
+    MediaPool *pool = nullptr;
+};
 
+QString addRemovalFile(const Ctx &c, MediaPool *pool, const QString &name,
+                       const QStringList &companions = {})
+{
+    const QString path = QDir(c.dir).filePath(name);
+    writeFile(path);
+    for (const QString &file : companions)
+        writeFile(QDir(c.dir).filePath(file));
+    MediaItem item;
+    item.path = path;
+    item.kind = MediaItem::Kind::Audio;
+    item.durationMs = 1000;
+    for (const QString &file : companions)
+        item.companions << QDir(c.dir).filePath(file);
+    CHECK(pool->add(item));
+    return path;
+}
+
+void testRemoveBasics(const Ctx &c, const RemovalControls &ui)
+{
     // Cancel: nothing changes.
-    const QString kept = add(QStringLiteral("kept.wav"));
-    panel->selectPaths({kept});
-    CHECK(trash->isEnabled() && wipe->isEnabled());
+    const QString kept = addRemovalFile(c, ui.pool, QStringLiteral("kept.wav"));
+    ui.panel->selectPaths({kept});
+    CHECK(ui.trash->isEnabled() && ui.wipe->isEnabled());
     answerMessageBox(QStringLiteral("Cancel"));
-    trash->trigger();
-    CHECK(QFile::exists(kept) && pool->contains(kept));
+    ui.trash->trigger();
+    CHECK(QFile::exists(kept) && ui.pool->contains(kept));
 
     // For good: the file and its item go.
-    const QString wiped = add(QStringLiteral("wiped.wav"));
-    panel->selectPaths({wiped});
-    answerMessageBox(QStringLiteral("Delete Permanently"));
-    wipe->trigger();
-    CHECK(!QFile::exists(wiped) && !pool->contains(wiped));
+    const QString wiped = addRemovalFile(c, ui.pool, QStringLiteral("wiped.wav"));
+    ui.panel->selectPaths({wiped});
+    answerMessageBox(QStringLiteral("Delete permanently"));
+    ui.wipe->trigger();
+    CHECK(!QFile::exists(wiped) && !ui.pool->contains(wiped));
 
     // To the trash: the file leaves the disk and the pool too.
-    const QString binned = add(QStringLiteral("binned.wav"));
-    panel->selectPaths({binned});
-    answerMessageBox(QStringLiteral("Move to Trash"));
-    trash->trigger();
-    CHECK(!QFile::exists(binned) && !pool->contains(binned));
+    const QString binned = addRemovalFile(c, ui.pool, QStringLiteral("binned.wav"));
+    ui.panel->selectPaths({binned});
+    answerMessageBox(QStringLiteral("Move to trash"));
+    ui.trash->trigger();
+    CHECK(!QFile::exists(binned) && !ui.pool->contains(binned));
+}
 
+void testRemoveCompanions(const Ctx &c, const RemovalControls &ui)
+{
     // A take's companion goes with it.
-    const QString lead = add(QStringLiteral("take.wav"), {QStringLiteral("take-2.wav")});
-    panel->selectPaths({lead});
-    answerMessageBox(QStringLiteral("Delete Permanently"));
-    wipe->trigger();
+    const QString lead =
+        addRemovalFile(c, ui.pool, QStringLiteral("take.wav"), {QStringLiteral("take-2.wav")});
+    ui.panel->selectPaths({lead});
+    answerMessageBox(QStringLiteral("Delete permanently"));
+    ui.wipe->trigger();
     CHECK(!QFile::exists(lead) && !QFile::exists(QDir(c.dir).filePath("take-2.wav")) &&
-          !pool->contains(lead));
+          !ui.pool->contains(lead));
 
     // A companion that can't be removed: the lead file goes, the item stays,
     // and the warning names the companion.
-    const QString blocked = add(QStringLiteral("blocked.wav"),
-                                {QStringLiteral("blocked-2.wav")});
+    const QString blocked =
+        addRemovalFile(c, ui.pool, QStringLiteral("blocked.wav"),
+                       {QStringLiteral("blocked-2.wav")});
     const QString blockedOther = QDir(c.dir).filePath(QStringLiteral("blocked-2.wav"));
     CHECK(QFile::remove(blockedOther));
     CHECK(QDir().mkpath(blockedOther));
     writeFile(blockedOther + QStringLiteral("/keep.txt"));
-    panel->selectPaths({blocked});
-    answerMessageBox(QStringLiteral("Delete Permanently"));
+    ui.panel->selectPaths({blocked});
+    answerMessageBox(QStringLiteral("Delete permanently"));
     answerMessageBox(QStringLiteral("OK"), QStringLiteral("blocked-2.wav"));
-    wipe->trigger();
+    ui.wipe->trigger();
     CHECK(!QFile::exists(blocked) && QFileInfo(blockedOther).isDir() &&
-          pool->contains(blocked));
+          ui.pool->contains(blocked));
 
     // Gone between the selection and the click: treated as removed.
-    const QString vanished = add(QStringLiteral("vanished.wav"));
-    panel->selectPaths({vanished});
-    CHECK(wipe->isEnabled());
+    const QString vanished = addRemovalFile(c, ui.pool, QStringLiteral("vanished.wav"));
+    ui.panel->selectPaths({vanished});
+    CHECK(ui.wipe->isEnabled());
     CHECK(QFile::remove(vanished));
-    answerMessageBox(QStringLiteral("Delete Permanently"));
-    wipe->trigger();
-    CHECK(!pool->contains(vanished));
+    answerMessageBox(QStringLiteral("Delete permanently"));
+    ui.wipe->trigger();
+    CHECK(!ui.pool->contains(vanished));
 
     // A recording split over two files: the later part goes too.
     const QString part1 = QDir(c.dir).filePath(QStringLiteral("split-1.wav"));
@@ -813,11 +843,192 @@ void testRemoveFromFileSystem(const Ctx &c)
     split.kind = MediaItem::Kind::Audio;
     split.durationMs = 2000;
     split.parts = {{part1, 0, 1000}, {part2, 1000, 1000}};
-    CHECK(pool->add(split));
-    panel->selectPaths({part1});
-    answerMessageBox(QStringLiteral("Delete Permanently"));
-    wipe->trigger();
-    CHECK(!QFile::exists(part1) && !QFile::exists(part2) && !pool->contains(part1));
+    CHECK(ui.pool->add(split));
+    ui.panel->selectPaths({part1});
+    answerMessageBox(QStringLiteral("Delete permanently"));
+    ui.wipe->trigger();
+    CHECK(!QFile::exists(part1) && !QFile::exists(part2) && !ui.pool->contains(part1));
+}
+
+void testRemoveProxies(const Ctx &c)
+{
+    // The camera reader names the take's proxies: the clip's own and each
+    // part's, once each. A file it can't read has no proxies.
+    MediaItem cameraTake;
+    cameraTake.path = QDir(c.dir).filePath(QStringLiteral("take-1.insv"));
+    cameraTake.kind = MediaItem::Kind::Clip360;
+    cameraTake.parts = {{cameraTake.path, 0, 1000},
+                        {QDir(c.dir).filePath(QStringLiteral("take-2.insv")), 1000, 1000}};
+    camera::ClipMetadata metadata;
+    metadata.proxyPath =
+        QDir(c.dir).filePath(QStringLiteral("LRV_take-1.lrv")).toStdString();
+    metadata.parts.resize(2);
+    metadata.parts[0].proxyLenses = {{metadata.proxyPath, 0, {}}};
+    metadata.parts[1].proxyLenses = {
+        {QDir(c.dir).filePath(QStringLiteral("LRV_take-2.lrv")).toStdString(), 0, {}}};
+    const QString proxy1 = QString::fromStdString(metadata.proxyPath);
+    const QString proxy2 = QString::fromStdString(metadata.parts[1].proxyLenses.front().path);
+    writeFile(proxy1); // proxy2 stays off the disk
+    CHECK(mediaremoval::proxyFiles(metadata) == QStringList{proxy1});
+    CHECK(!mediaremoval::proxyFiles(metadata).contains(proxy2));
+    const QStringList collected = mediaremoval::takeFiles(cameraTake, &metadata);
+    CHECK(collected == (QStringList{cameraTake.path, cameraTake.parts[1].path, proxy1}));
+    CHECK(mediaremoval::takeFiles(cameraTake, nullptr) ==
+          (QStringList{cameraTake.path, cameraTake.parts[1].path}));
+}
+
+void testRemoveNoBackupDialog(const Ctx &c, const RemovalControls &ui)
+{
+    // A clip with no backup wav beside it: the dialog must not name one.
+    const QString plainClip = addRemovalFile(c, ui.pool, QStringLiteral("plain.insv"));
+    const QString absentBackup = QDir(c.dir).filePath(QStringLiteral("plain_backup.wav"));
+    CHECK(!QFile::exists(absentBackup));
+    CHECK(mediaremoval::backupAudioFiles({plainClip}).isEmpty());
+    ui.panel->selectPaths({plainClip});
+    QString plainDetails, plainMessage;
+    bool grip = false, initialWide = false, sameRowClosed = false, sameRowOpen = false,
+         grewBefore = false, grewAfter = false, shrankAfter = false;
+    whenDialog([&](QWidget *w) {
+        auto *dialog = qobject_cast<QDialog *>(w);
+        CHECK(dialog);
+        if (!dialog) {
+            w->close();
+            return;
+        }
+        grip = dialog->isSizeGripEnabled();
+        if (auto *label = w->findChild<QLabel *>(QStringLiteral("mediaRemovalText")))
+            plainMessage = label->text();
+        else
+            CHECK(false);
+        const QSize first = dialog->size();
+        // The old QMessageBox opened 400 pixels wide here. The custom layout
+        // alone hints 243: the dialog must not start at that.
+        initialWide = first.width() >= 400 && first.width() > dialog->minimumWidth();
+        dialog->resize(first.width() + 120, first.height() + 80);
+        grewBefore = dialog->width() > first.width() && dialog->height() > first.height();
+        auto *showDetails =
+            w->findChild<QPushButton *>(QStringLiteral("mediaRemovalDetailsButton"));
+        CHECK(showDetails && showDetails->isVisible());
+        QAbstractButton *go = nullptr;
+        for (QAbstractButton *b : w->findChildren<QAbstractButton *>())
+            if (b->text().remove(QLatin1Char('&')) == QLatin1String("Delete permanently"))
+                go = b;
+        CHECK(go);
+        const auto sameRow = [dialog](QWidget *a, QWidget *b) {
+            const QRect ra(a->mapTo(dialog, QPoint(0, 0)), a->size());
+            const QRect rb(b->mapTo(dialog, QPoint(0, 0)), b->size());
+            return ra.top() < rb.bottom() && rb.top() < ra.bottom() && ra.left() < rb.left();
+        };
+        if (showDetails && go)
+            sameRowClosed = sameRow(showDetails, go);
+        if (showDetails)
+            showDetails->click();
+        auto *details = w->findChild<QTextEdit *>(QStringLiteral("mediaRemovalDetails"));
+        CHECK(details && details->isVisible());
+        if (details)
+            plainDetails = details->toPlainText();
+        if (showDetails && go)
+            sameRowOpen = sameRow(showDetails, go);
+        const QSize second = dialog->size();
+        dialog->resize(second.width() + 120, second.height() + 80);
+        grewAfter = dialog->width() > second.width() && dialog->height() > second.height();
+        const QSize third = dialog->size();
+        dialog->resize(third.width() - 80, third.height() - 50);
+        shrankAfter = dialog->width() < third.width() && dialog->height() < third.height();
+        if (go)
+            go->click();
+        else
+            dialog->reject();
+    });
+    ui.wipe->trigger();
+    CHECK(grip);
+    CHECK(initialWide);
+    CHECK(sameRowClosed);
+    CHECK(sameRowOpen);
+    CHECK(grewBefore);
+    CHECK(grewAfter);
+    CHECK(shrankAfter);
+    CHECK(!plainDetails.isEmpty() && plainDetails.contains(plainClip));
+    CHECK(plainMessage.contains(QStringLiteral("plain.insv")));
+    CHECK(!plainMessage.contains(QStringLiteral("_backup.wav")));
+    CHECK(!plainDetails.contains(QStringLiteral("_backup.wav")));
+    CHECK(!QFile::exists(plainClip) && !QFile::exists(absentBackup) &&
+          !ui.pool->contains(plainClip));
+}
+
+void testRemoveBackupAudio(const Ctx &c, const RemovalControls &ui)
+{
+    // A file named like an X6 clip still has a backup sound file: the name
+    // rule finds it. Both go, and both join the confirmation's list. The
+    // wav's own pool item goes too.
+    const QString backupClip = addRemovalFile(c, ui.pool, QStringLiteral("x6.insv"));
+    const QString backupWav = QDir(c.dir).filePath(QStringLiteral("x6_backup.wav"));
+    testmedia::writeWav(backupWav.toStdString(), testmedia::kWavRate,
+                        [](int) { return 0.0; });
+    MediaItem backupItem;
+    backupItem.path = backupWav;
+    backupItem.kind = MediaItem::Kind::Audio;
+    backupItem.durationMs = 1000;
+    CHECK(ui.pool->add(backupItem));
+    CHECK(media::isBackupAudio(backupWav));
+    ui.panel->selectPaths({backupClip});
+    QString details;
+    answerMessageBox(QStringLiteral("Delete permanently"), {}, &details);
+    ui.wipe->trigger();
+    CHECK(!QFile::exists(backupClip) && !QFile::exists(backupWav) &&
+          !ui.pool->contains(backupClip) && !ui.pool->contains(backupWav));
+    CHECK(details.contains(backupClip) && details.contains(backupWav));
+
+    // A backup sound file on the timeline stays; the clip goes.
+    const QString keptClip = addRemovalFile(c, ui.pool, QStringLiteral("x6kept.insv"));
+    const QString keptWav = QDir(c.dir).filePath(QStringLiteral("x6kept_backup.wav"));
+    testmedia::writeWav(keptWav.toStdString(), testmedia::kWavRate, [](int) { return 0.0; });
+    MediaItem keptItem;
+    keptItem.path = keptWav;
+    keptItem.kind = MediaItem::Kind::Audio;
+    keptItem.durationMs = 1000;
+    CHECK(ui.pool->add(keptItem));
+    const int audioTrack = c.timeline->addTrack(Track::Kind::Audio);
+    CHECK(audioTrack != 0);
+    CHECK(c.timeline->addAudioClip(audioTrack, keptWav, 1000, 0) != 0);
+    ui.panel->selectPaths({keptClip});
+    answerMessageBox(QStringLiteral("Delete permanently"));
+    ui.wipe->trigger();
+    CHECK(!QFile::exists(keptClip) && QFile::exists(keptWav) &&
+          !ui.pool->contains(keptClip) && ui.pool->contains(keptWav));
+}
+
+void testRemoveTimelineGuard(const Ctx &c, const RemovalControls &ui)
+{
+    // The panel's guard checked again: a clip on the timeline stays, even
+    // when the request comes around the disabled action.
+    const QString usedClip = addRemovalFile(c, ui.pool, QStringLiteral("used-timeline.wav"));
+    testmedia::writeWav(usedClip.toStdString(), testmedia::kWavRate, [](int) { return 0.0; });
+    const int usedTrack = c.timeline->addTrack(Track::Kind::Audio);
+    CHECK(usedTrack != 0);
+    CHECK(c.timeline->addAudioClip(usedTrack, usedClip, 1000, 0) != 0);
+    failOnDialog(300);
+    emit ui.panel->deletePermanentlyRequested({usedClip});
+    QTest::qWait(400);
+    CHECK(QFile::exists(usedClip) && ui.pool->contains(usedClip));
+}
+
+void testRemoveFromFileSystem(const Ctx &c)
+{
+    std::printf("  remove from file system\n");
+    RemovalControls ui;
+    ui.trash = action(c, "mediaMoveToTrashAction");
+    ui.wipe = action(c, "mediaDeletePermanentlyAction");
+    ui.panel = c.w->findChild<MediaPoolPanel *>();
+    ui.pool = c.project->mediaPool();
+    if (!ui.trash || !ui.wipe || !ui.panel)
+        return;
+    testRemoveBasics(c, ui);
+    testRemoveCompanions(c, ui);
+    testRemoveProxies(c);
+    testRemoveNoBackupDialog(c, ui);
+    testRemoveBackupAudio(c, ui);
+    testRemoveTimelineGuard(c, ui);
 }
 
 void testOpenClip(const Ctx &c)
