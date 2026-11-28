@@ -71,6 +71,7 @@
 #include <QScrollBar>
 #include <QSet>
 #include <QSettings>
+#include <QShortcut>
 #include <QSignalSpy>
 #include <QSlider>
 #include <QSplitter>
@@ -93,10 +94,26 @@
 #include <map>
 #include <memory>
 #include <set>
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 namespace {
 
 int g_failures = 0;
+
+// Set while a Qt message contains "Ambiguous shortcut overload", during a
+// key press that watches the messages.
+std::atomic<bool> g_ambiguousShortcut{false};
+std::atomic<QtMessageHandler> g_previousMessageHandler{nullptr};
+
+void captureWarnings(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
+    if (msg.contains(QLatin1String("Ambiguous shortcut overload")))
+        g_ambiguousShortcut = true;
+    if (const QtMessageHandler previous = g_previousMessageHandler.load())
+        previous(type, context, msg);
+}
 
 #define CHECK(cond)                                                                                 \
     do {                                                                                           \
@@ -1523,6 +1540,129 @@ void testMediaPool(const Ctx &c)
     if (QAction *undo = action(c, "undoAction"))
         undo->trigger();
     CHECK(c.timeline->trackCount() == tracks);
+}
+
+// Delete follows the focus: in the Media tab it removes the selected file,
+// on the timeline it edits. While the Media list or grid has the focus the
+// window's Delete shortcut is off, so Qt finds one match and prints no
+// "Ambiguous shortcut overload".
+void testDeleteShortcutFocus(const Ctx &c)
+{
+    auto *panel = find<MediaPoolPanel>(c.w, "mediaPoolPanel");
+    auto *sources = find<TabSidebar>(c.w, "sourcesSidebar");
+    MediaPoolList *list = panel ? panel->list() : nullptr;
+    MediaPoolGrid *grid = panel ? panel->grid() : nullptr;
+    if (!panel || !sources || !list || !grid)
+        return;
+    sources->setOpen(true);
+    sources->setCurrentIndex(0); // Media
+    const QString first = QDir(c.dir).filePath(QStringLiteral("VID_20260101_140000_00_004.insv"));
+    const QString second = QDir(c.dir).filePath(QStringLiteral("VID_20260101_141000_00_005.insv"));
+    const QString third = QDir(c.dir).filePath(QStringLiteral("VID_20260101_142000_00_006.insv"));
+    const QString fourth = QDir(c.dir).filePath(QStringLiteral("VID_20260101_143000_00_007.insv"));
+    for (const QString &path : {first, second, third, fourth})
+        writeFile(path);
+    MediaPool *pool = c.project->mediaPool();
+    emit panel->filesDropped({first, second, third, fourth});
+    CHECK(waitFor([&] {
+        return pool->contains(first) && pool->contains(second) && pool->contains(third) &&
+               pool->contains(fourth);
+    }));
+    if (!pool->contains(first) || !pool->contains(second) || !pool->contains(third) ||
+        !pool->contains(fourth))
+        return;
+
+    QShortcut *editorDelete = nullptr;
+    for (QShortcut *sc : c.w->findChildren<QShortcut *>()) {
+        if (sc->context() == Qt::ApplicationShortcut &&
+            sc->key() == QKeySequence(Qt::Key_Delete)) {
+            editorDelete = sc;
+            break;
+        }
+    }
+    CHECK(editorDelete);
+
+    c.w->activateWindow();
+    (void)QTest::qWaitForWindowActive(c.w);
+    const int clips = c.timeline->count();
+    const auto press = [&](int k) {
+        g_ambiguousShortcut = false;
+        g_previousMessageHandler = qInstallMessageHandler(captureWarnings);
+        key(c, k);
+        qInstallMessageHandler(g_previousMessageHandler.exchange(nullptr));
+        return !g_ambiguousShortcut.load();
+    };
+
+    // The list has the focus: its Remove from project action is the only
+    // match, so Delete removes the file and leaves the timeline alone.
+    panel->setViewMode(MediaPoolPanel::ViewMode::List);
+    panel->selectPaths({first});
+    CHECK(waitFor([&] { return panel->selectedPaths() == QStringList{first}; }));
+    list->setFocus();
+    CHECK(waitFor([&] { return list->hasFocus(); }));
+    CHECK(editorDelete && !editorDelete->isEnabled());
+    CHECK(press(Qt::Key_Delete));
+    CHECK(waitFor([&] { return !pool->contains(first); }));
+    CHECK(!pool->contains(first));
+    CHECK(c.timeline->count() == clips);
+
+    // The grid takes its turn the same way.
+    panel->setViewMode(MediaPoolPanel::ViewMode::Grid);
+    panel->selectPaths({second});
+    CHECK(waitFor([&] { return panel->selectedPaths() == QStringList{second}; }));
+    grid->setFocus();
+    CHECK(waitFor([&] { return grid->hasFocus(); }));
+    CHECK(editorDelete && !editorDelete->isEnabled());
+    CHECK(press(Qt::Key_Delete));
+    CHECK(waitFor([&] { return !pool->contains(second); }));
+    CHECK(!pool->contains(second));
+    CHECK(c.timeline->count() == clips);
+
+    // Backspace works in the list too.
+    panel->setViewMode(MediaPoolPanel::ViewMode::List);
+    panel->selectPaths({third});
+    CHECK(waitFor([&] { return panel->selectedPaths() == QStringList{third}; }));
+    list->setFocus();
+    CHECK(waitFor([&] { return list->hasFocus(); }));
+    CHECK(editorDelete && !editorDelete->isEnabled());
+    CHECK(press(Qt::Key_Backspace));
+    CHECK(waitFor([&] { return !pool->contains(third); }));
+    CHECK(!pool->contains(third));
+    CHECK(c.timeline->count() == clips);
+
+    // Back in the list, a click on the timeline moves the focus there: the
+    // editor's Delete and Backspace act on the timeline, and the media file
+    // stays. A ruler click only seeks.
+    panel->selectPaths({fourth});
+    CHECK(waitFor([&] { return panel->selectedPaths() == QStringList{fourth}; }));
+    list->setFocus();
+    CHECK(waitFor([&] { return list->hasFocus(); }));
+    CHECK(editorDelete && !editorDelete->isEnabled());
+    const int firstTemp = c.timeline->appendClip(c.clipA, kClipMs, kFps);
+    const int secondTemp = c.timeline->appendClip(c.clipA, kClipMs, kFps);
+    CHECK(firstTemp > 0 && secondTemp > 0);
+    QTest::mouseClick(c.timelineWidget, Qt::LeftButton, Qt::NoModifier, QPoint(100, 5));
+    CHECK(waitFor([&] {
+        QWidget *focus = QApplication::focusWidget();
+        return focus == c.timelineWidget || c.timelineWidget->isAncestorOf(focus);
+    }));
+    CHECK(editorDelete && editorDelete->isEnabled());
+    c.timelineWidget->clearKeySelection();
+    emit c.timelineWidget->trackClipSelected(-1);
+    emit c.timelineWidget->transitionSelected(0);
+    emit c.timelineWidget->clipSelected(firstTemp);
+    CHECK(press(Qt::Key_Delete));
+    CHECK(waitFor([&] { return c.timeline->clipById(firstTemp) == nullptr; }));
+    CHECK(c.timeline->clipById(firstTemp) == nullptr);
+    CHECK(pool->contains(fourth));
+    c.timelineWidget->clearKeySelection();
+    emit c.timelineWidget->clipSelected(secondTemp);
+    CHECK(press(Qt::Key_Backspace));
+    CHECK(waitFor([&] { return c.timeline->clipById(secondTemp) == nullptr; }));
+    CHECK(c.timeline->clipById(secondTemp) == nullptr);
+    CHECK(pool->contains(fourth));
+    CHECK(c.timeline->count() == clips);
+    pool->remove({fourth});
 }
 
 // A ONE X2 take is three files: lens 0 (the clip), lens 1, the proxy. A
@@ -3599,6 +3739,7 @@ int main(int argc, char **argv)
             testEffects(c);
             testDuplicateClip(c);
             testMediaPool(c);
+            testDeleteShortcutFocus(c);
             testTakeFiles(c);
             testAudioTrack(c);
             testOverlay(c);
@@ -3639,6 +3780,25 @@ int main(int argc, char **argv)
             testOpenTakeFile(c); // replaces the project
         }
     }
+
+#if defined(__GLIBC__)
+    // Destroying a window clears the focus in ~QWidget, after MainWindow's
+    // members are gone. A focus handler still connected then reads freed
+    // memory; the perturb byte turns that use-after-free into a crash here.
+    mallopt(M_PERTURB, 165);
+    {
+        MainWindow w(nullptr, standIns());
+        w.resize(900, 600);
+        w.showLibrary();
+        w.show();
+        w.activateWindow();
+        CHECK(QTest::qWaitForWindowActive(&w));
+        if (auto *page = w.findChild<QWidget *>(QStringLiteral("projectLibrary")))
+            page->setFocus();
+        QApplication::processEvents();
+    }
+    mallopt(M_PERTURB, 0);
+#endif
 
     if (g_failures == 0)
         std::printf("main_window_test: all checks passed\n");
