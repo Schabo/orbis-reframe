@@ -392,6 +392,8 @@ void MainWindow::setupSourcesSidebar()
     });
     connect(m_project->mediaPool(), &MediaPool::missingChanged, this, previewGone);
     connect(m_mediaPanel, &MediaPoolPanel::locateRequested, this, &MainWindow::locateMedia);
+    connect(m_mediaPanel, &MediaPoolPanel::showInTimelineRequested, this,
+            &MainWindow::showMediaInTimeline);
     connect(m_mediaPanel, &MediaPoolPanel::moveToTrashRequested, this,
             &MainWindow::moveMediaToTrash);
     connect(m_mediaPanel, &MediaPoolPanel::deletePermanentlyRequested, this,
@@ -3311,6 +3313,27 @@ void MainWindow::locateMedia(const QString &path)
     m_mediaImport->showRelinked(relinks);
 }
 
+void MainWindow::showMediaInTimeline(const QString &path)
+{
+    for (int i = 0; i < m_timeline->count(); ++i) {
+        const ClipItem &clip = m_timeline->clipAt(i);
+        if (clip.sourcePath != path)
+            continue;
+        selectVideoClip(clip.id);
+        navigateTo(m_timeline->clipToTimeline(i, 0), true);
+        return;
+    }
+    for (int i = 0; i < m_timeline->trackCount(); ++i) {
+        for (const TrackClip &clip : m_timeline->trackAt(i).clips) {
+            if (clip.sourcePath != path)
+                continue;
+            selectTrackClip(clip.id);
+            navigateTo(clip.startMs, true);
+            return;
+        }
+    }
+}
+
 namespace {
 
 // Every file the timeline plays: the main video track's clips, and the
@@ -3335,12 +3358,12 @@ QStringList collectTakeFiles(const MediaPool &pool, const QStringList &paths)
         const MediaItem *m = pool.item(path);
         if (!m)
             continue;
-        // The camera reader knows the proxies: the take's own and each
-        // part's. A file it can't read has none to go with it.
-        std::shared_ptr<const camera::ClipMetadata> metadata;
-        if (m->kind == MediaItem::Kind::Clip360)
-            metadata = camera::ReadClipMetadata(m->path.toStdString());
-        for (const QString &file : mediaremoval::takeFiles(*m, metadata.get()))
+        // The camera reader is asked for every item but audio. It names the
+        // proxies; a file it can't read has none.
+        for (const QString &file : mediaremoval::takeFiles(
+                 *m, [](const QString &path) {
+                     return camera::ReadClipMetadata(path.toStdString());
+                 }))
             if (!files.contains(file))
                 files << file;
     }
@@ -3348,19 +3371,24 @@ QStringList collectTakeFiles(const MediaPool &pool, const QStringList &paths)
 }
 
 // Drop a backup sound file the timeline uses. False when another file is on
-// the timeline, or nothing is left: the take stays.
-bool keepRemovableFiles(QStringList &files, const QSet<QString> &used)
+// the timeline, or nothing is left: the take stays. `blockedFiles` gets the
+// files that keep it there.
+bool keepRemovableFiles(QStringList &files, const QSet<QString> &used,
+                        QStringList *blockedFiles)
 {
-    for (int i = files.size() - 1; i >= 0; --i) {
-        if (!used.contains(files[i]))
-            continue;
-        if (media::isBackupAudio(files[i])) {
-            files.removeAt(i);
+    QStringList removable;
+    blockedFiles->clear();
+    for (const QString &file : files) {
+        if (!used.contains(file)) {
+            removable << file;
             continue;
         }
-        return false;
+        if (media::isBackupAudio(file))
+            continue;
+        blockedFiles->append(file);
     }
-    return !files.isEmpty();
+    files = removable;
+    return blockedFiles->isEmpty() && !files.isEmpty();
 }
 
 // The dialog lists only files that are there now. The deletion list keeps
@@ -3417,7 +3445,8 @@ RemovalDialog::RemovalDialog(QWidget *parent, const QString &message,
                              const QStringList &shown, bool toTrash)
     : QDialog(parent)
 {
-    setWindowTitle(MainWindow::tr("Remove from file system"));
+    setWindowTitle(toTrash ? MainWindow::tr("Move to trash")
+                           : MainWindow::tr("Delete permanently"));
     setSizeGripEnabled(true);
     m_layout = new QVBoxLayout(this);
     m_layout->setSizeConstraint(QLayout::SetDefaultConstraint);
@@ -3445,11 +3474,11 @@ RemovalDialog::RemovalDialog(QWidget *parent, const QString &message,
     addFileList(shown);
     addButtons(toTrash);
 
-    // The old QMessageBox opened 400 pixels wide for this confirmation. The
-    // custom layout alone hints a narrow width, so start at the old width.
-    constexpr int kOldBoxWidth = 400;
+    // The app's message boxes are 400 pixels wide at the default font. The
+    // custom layout alone is narrower, so start at that width.
+    constexpr int kBoxWidth = 400;
     const QSize hint = sizeHint();
-    resize(std::max(kOldBoxWidth, hint.width()), hint.height());
+    resize(std::max(kBoxWidth, hint.width()), hint.height());
 }
 
 void RemovalDialog::addFileList(const QStringList &shown)
@@ -3465,15 +3494,15 @@ void RemovalDialog::addFileList(const QStringList &shown)
     details->setVisible(false);
     m_layout->addWidget(details);
 
-    m_showDetails = new QPushButton(MainWindow::tr("Show Details..."), this);
+    m_showDetails = new QPushButton(MainWindow::tr("&Show details\u2026"), this);
     m_showDetails->setObjectName(QStringLiteral("mediaRemovalDetailsButton"));
     m_showDetails->setCheckable(true);
     m_showDetails->setAutoDefault(false);
     QObject::connect(m_showDetails, &QPushButton::toggled, this,
                      [details, show = m_showDetails](bool open) {
                          details->setVisible(open);
-                         show->setText(open ? MainWindow::tr("Hide Details...")
-                                            : MainWindow::tr("Show Details..."));
+                         show->setText(open ? MainWindow::tr("&Hide details\u2026")
+                                            : MainWindow::tr("&Show details\u2026"));
                      });
 }
 
@@ -3481,7 +3510,7 @@ void RemovalDialog::addButtons(bool toTrash)
 {
     auto *buttons = new QDialogButtonBox(this);
     QPushButton *go = buttons->addButton(
-        toTrash ? MainWindow::tr("&Move to trash") : MainWindow::tr("&Delete permanently"),
+        toTrash ? MainWindow::tr("Move to &trash") : MainWindow::tr("&Delete permanently"),
         QDialogButtonBox::DestructiveRole);
     QPushButton *cancel = buttons->addButton(QDialogButtonBox::Cancel);
     cancel->setDefault(true);
@@ -3560,6 +3589,35 @@ void warnFailedRemovals(QWidget *parent, const QStringList &failed)
                              .arg(failed.join(QLatin1Char('\n'))));
 }
 
+void tellFilesOnTimeline(QWidget *parent, const QStringList &files,
+                         const std::function<void(const QString &)> &goToClip)
+{
+    QStringList names;
+    for (const QString &file : files)
+        names << QFileInfo(file).fileName();
+    QString text =
+        files.size() == 1
+            ? MainWindow::tr("This file is used on the timeline. Remove it from the timeline "
+                             "first:")
+            : MainWindow::tr("These files are used on the timeline. Remove them from the "
+                             "timeline first:");
+    text += QStringLiteral("\n\n") + names.join(QLatin1Char('\n'));
+    if (files.size() > 1)
+        text += QStringLiteral("\n\n") +
+                MainWindow::tr("Set cursor to clip goes to the first file's clip.");
+
+    QMessageBox box(QMessageBox::Information, MainWindow::tr("Files on the timeline"), text,
+                    QMessageBox::NoButton, parent);
+    QPushButton *go =
+        box.addButton(MainWindow::tr("&Set cursor to clip"), QMessageBox::ActionRole);
+    QPushButton *close = box.addButton(MainWindow::tr("&Close"), QMessageBox::RejectRole);
+    box.setDefaultButton(close);
+    box.setEscapeButton(close);
+    box.exec();
+    if (box.clickedButton() == go)
+        goToClip(files.first());
+}
+
 } // namespace
 
 void MainWindow::moveMediaToTrash(const QStringList &paths)
@@ -3577,12 +3635,19 @@ void MainWindow::removeMediaFromDisk(const QStringList &paths, bool toTrash)
     MediaPool *pool = m_project->mediaPool();
     const QSet<QString> used = timelineFiles(*m_timeline);
     QStringList files = collectTakeFiles(*pool, paths);
-    if (!keepRemovableFiles(files, used))
+    QStringList blockedFiles;
+    if (!keepRemovableFiles(files, used, &blockedFiles)) {
+        if (!blockedFiles.isEmpty())
+            tellFilesOnTimeline(this, blockedFiles,
+                                [this](const QString &path) { showMediaInTimeline(path); });
         return;
+    }
     if (!confirmRemoveFiles(this, files, toTrash))
         return;
     const RemovalResult result = removeTakeFiles(files, toTrash);
     removeGonePoolItems(*pool, paths, files, result.gone);
+    if (!result.failed.isEmpty())
+        recheckMissingMedia();
     warnFailedRemovals(this, result.failed);
 }
 
