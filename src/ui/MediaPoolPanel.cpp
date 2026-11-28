@@ -856,6 +856,8 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     m_trashAction =
         new QAction(theme::icon(QStringLiteral("trash-2")), tr("Move to trash"), this);
     m_trashAction->setObjectName(QStringLiteral("mediaMoveToTrashAction"));
+    m_trashAction->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Delete));
+    m_trashAction->setShortcutContext(Qt::WidgetShortcut);
     connect(m_trashAction, &QAction::triggered, this, [this] {
         const QStringList paths = selectedPaths();
         if (m_trashAction->isEnabled() && !paths.isEmpty())
@@ -863,6 +865,8 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     });
     m_deleteAction = new QAction(tr("Delete permanently"), this);
     m_deleteAction->setObjectName(QStringLiteral("mediaDeletePermanentlyAction"));
+    m_deleteAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Delete));
+    m_deleteAction->setShortcutContext(Qt::WidgetShortcut);
     connect(m_deleteAction, &QAction::triggered, this, [this] {
         const QStringList paths = selectedPaths();
         if (m_deleteAction->isEnabled() && !paths.isEmpty())
