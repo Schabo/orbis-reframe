@@ -25,6 +25,7 @@
 #include <QDropEvent>
 #include <QWheelEvent>
 #include <QSignalSpy>
+#include <QStringList>
 #include <QTest>
 #include <QToolTip>
 
@@ -328,6 +329,71 @@ void testReframeKeyCopyMenu()
     CHECK(copy.count() == 2);
 }
 
+// A right click on a diamond opens the clip menu. Copy keyframe leads when
+// the diamond is not selected; the selection's actions come first when it is.
+// The clip's own actions follow in both cases.
+void testDiamondClipMenu()
+{
+    Fixture f;
+    TimelineWidget::Clip a, b;
+    a.id = 1;
+    a.label = "a";
+    a.trimOutMs = a.sourceDurationMs = 10000;
+    a.keySourceMs = {1000, 3000, 5000};
+    b.id = 2;
+    b.label = "b";
+    b.trimOutMs = b.sourceDurationMs = 10000;
+    f.w.setClips({a, b});
+    const int keyY = kRulerH + kMainH - 5;
+    const auto lane = [&](qint64 ms) { return QPoint(Fixture::x(ms), keyY); };
+    f.w.setReframeKeysCopied(2);
+
+    QSignalSpy single(&f.w, &TimelineWidget::reframeKeyCopyRequested);
+    const auto menuAt = [&](QPoint at, const char *choose) {
+        QStringList items;
+        QAction *chosen = nullptr;
+        QTimer::singleShot(0, [&] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if (!menu)
+                return;
+            for (QAction *a : menu->actions())
+                if (!a->isSeparator())
+                    items << a->text();
+            chosen = choose ? menu->findChild<QAction *>(QString::fromLatin1(choose)) : nullptr;
+            if (chosen)
+                menu->setActiveAction(chosen);
+            QTest::keyClick(menu, chosen ? Qt::Key_Return : Qt::Key_Escape);
+        });
+        QContextMenuEvent e(QContextMenuEvent::Mouse, at, f.w.mapToGlobal(at));
+        QApplication::sendEvent(&f.w, &e);
+        return items;
+    };
+
+    drag(&f.w, lane(500), lane(3500)); // selects 1000 and 3000
+    CHECK(f.w.selectedKeys() == (QVector<qint64>{1000, 3000}));
+
+    // A diamond outside the selection: Copy keyframe leads.
+    QStringList items = menuAt(QPoint(Fixture::x(5000), keyY), nullptr);
+    CHECK(items.indexOf("Copy keyframe") == 0);
+    CHECK(items.indexOf("Copy keyframes (2)") > 0);
+    CHECK(items.indexOf("Paste keyframes (2)") > items.indexOf("Copy keyframes (2)"));
+    CHECK(items.indexOf("Delete keyframes (2)") > items.indexOf("Paste keyframes (2)"));
+    CHECK(items.contains("Split here"));
+
+    // A diamond in the selection: its actions come first.
+    items = menuAt(QPoint(Fixture::x(3000), keyY), nullptr);
+    CHECK(items.indexOf("Copy keyframes (2)") >= 0);
+    CHECK(items.indexOf("Paste keyframes (2)") > items.indexOf("Copy keyframes (2)"));
+    CHECK(items.indexOf("Delete keyframes (2)") > items.indexOf("Paste keyframes (2)"));
+    CHECK(items.indexOf("Copy keyframe") > items.indexOf("Delete keyframes (2)"));
+    CHECK(items.contains("Split here"));
+
+    // Copy keyframe still works from the merged menu.
+    menuAt(QPoint(Fixture::x(5000), keyY), "keyframeCopyAction");
+    CHECK(single.count() == 1 && single.last().at(0).toInt() == 1 &&
+          single.last().at(1).toLongLong() == 5000);
+}
+
 void dragWith(QWidget *w, QPoint from, QPoint to, Qt::KeyboardModifiers mods)
 {
     QTest::mousePress(w, Qt::LeftButton, mods, from);
@@ -555,6 +621,15 @@ void testKeyLanePasteMenu()
           paste.last().at(1).toLongLong() == 2500);
 
     // The playhead is outside clip a: no action on a.
+    CHECK(menuAt(aBody, false).isEmpty());
+    CHECK(paste.count() == 2);
+
+    // A flat clip takes no reframe keys, so no action either.
+    TimelineWidget::Clip flat = a;
+    flat.flat = true;
+    f.w.setClips({flat, b});
+    f.w.setPlayhead(4000);
+    f.w.setReframeKeysCopied(2);
     CHECK(menuAt(aBody, false).isEmpty());
     CHECK(paste.count() == 2);
 }
@@ -1619,6 +1694,7 @@ int main(int argc, char **argv)
     testTrims();
     testKeyDiamondClick();
     testReframeKeyCopyMenu();
+    testDiamondClipMenu();
     testKeyLane();
     testKeyLaneCopy();
     testKeyLanePasteMenu();
