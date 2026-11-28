@@ -28,7 +28,9 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMoveEvent>
 #include <QPlatformSurfaceEvent>
+#include <QResizeEvent>
 #include <QSet>
 #include <QSettings>
 #include <QSplitter>
@@ -104,6 +106,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     : QMainWindow(parent), m_clipBackend(std::move(clipBackend))
 {
     setWindowTitle(QStringLiteral("orbis-reframe"));
+    m_normalGeometryTimer = new QTimer(this);
+    m_normalGeometryTimer->setSingleShot(true);
+    m_normalGeometryTimer->setInterval(100); // the maximized state follows the resize
+    connect(m_normalGeometryTimer, &QTimer::timeout, this, &MainWindow::noteNormalGeometry);
 
     QWidget *viewportContainer = createViewport(vulkanInstance);
     qApp->installEventFilter(this); // see eventFilter(): release text fields
@@ -139,19 +145,32 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     setupMediaCheck();
     connectFullScreen();
 
-    // The size (and the place, where the platform lets a window choose it)
-    // from the last close; 1280x760 the first time.
-    const QByteArray geometry =
-        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
-            .value(QStringLiteral("mainWindow/geometry"))
-            .toByteArray();
-    if (geometry.isEmpty())
-        resize(1280, 760);
+    // The normal size, and the place where the platform lets a window choose
+    // it, from the last close. The first start uses 1280x760. A saved
+    // maximized state comes back on top of the normal size.
+    QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
+    const QRect normal = settings.value(QStringLiteral("mainWindow/geometry")).toRect();
+    if (normal.isValid())
+        setGeometry(normal);
     else
-        restoreGeometry(geometry);
+        resize(1280, 760);
+    m_normalGeometry = geometry();
+    m_startMaximized = settings.value(QStringLiteral("mainWindow/maximized"), false).toBool();
 
     m_playbackThread->start();
     setEditorActive(false); // the library is shown until a project opens
+}
+
+void MainWindow::restoreStartupWindowState()
+{
+    if (!m_startMaximized)
+        return;
+    m_startMaximized = false;
+    // A compositor may ignore the geometry set before show, and KDE Wayland
+    // uses the size at the maximize request as the size to return to. Apply
+    // the normal geometry again, then maximize in the same event turn.
+    setGeometry(m_normalGeometry);
+    showMaximized();
 }
 
 QWidget *MainWindow::createViewport(QVulkanInstance *vulkanInstance)
@@ -1583,11 +1602,14 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     if (m_files->confirmDiscard()) {
-        // The next start opens at this size and, where the platform lets a
-        // window choose it, in the same place. Cancelling the close keeps
-        // the old value.
-        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
-            .setValue(QStringLiteral("mainWindow/geometry"), saveGeometry());
+        // The next start opens at the normal size and place, then maximizes
+        // if the window was. A close in full screen keeps the size from
+        // before full screen. Cancelling the close keeps the old value.
+        noteNormalGeometry();
+        QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
+        settings.setValue(QStringLiteral("mainWindow/geometry"), m_normalGeometry);
+        settings.setValue(QStringLiteral("mainWindow/maximized"),
+                          m_fullScreen ? m_wasMaximized : isMaximized());
         // Let the viewport release its swapchain while it's still shown.
         // Closing destroys the window, which hides it first and only then
         // tells QVulkanWindow (SurfaceAboutToBeDestroyed); with Qt 6.8 on
@@ -1598,6 +1620,34 @@ void MainWindow::closeEvent(QCloseEvent *event)
         event->accept();
     } else
         event->ignore();
+}
+
+void MainWindow::moveEvent(QMoveEvent *event)
+{
+    QMainWindow::moveEvent(event);
+    scheduleNormalGeometry();
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    scheduleNormalGeometry();
+}
+
+void MainWindow::scheduleNormalGeometry()
+{
+    // A maximized or full-screen window's size is not the size to return to.
+    if (m_fullScreen || (windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen)))
+        return;
+    m_normalGeometryTimer->start();
+}
+
+void MainWindow::noteNormalGeometry()
+{
+    // A maximized or full-screen window's size is not the size to return to.
+    if (m_fullScreen || (windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen)))
+        return;
+    m_normalGeometry = geometry();
 }
 
 void MainWindow::applySampledPose(qint64 sourceMs, bool clipChanged)
