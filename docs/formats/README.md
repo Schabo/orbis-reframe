@@ -9,7 +9,7 @@ differences from it, or, for another vendor, from scratch.
 |---|---|---|---|
 | Insta360 X5 | 360, one `.insv` with both lenses | [`insta360-x5.md`](insta360-x5.md) | supported; every fact checked on our clips |
 | Insta360 X4 | 360, one `.insv` with both lenses | [`insta360-x4.md`](insta360-x4.md) | not yet; desk research, no clips |
-| Insta360 X4 Air | 360, one `.insv` with both lenses | [`insta360-x4.md`](insta360-x4.md) (with the X4) | not yet; desk research and one owner's log: a split recording's second part is refused |
+| Insta360 X4 Air | 360, one `.insv` with both lenses | [`insta360-x4.md`](insta360-x4.md) (with the X4) | not yet; three clips of our own (8K, 6K, 4K 50): open and stitch, but the seam is ~1.4° off; a split recording's second part is refused (one owner's log) |
 | Insta360 X6 | 360, one `.insv`, 10-bit modes | [`insta360-x6.md`](insta360-x6.md) | experimental: opens, stitches, stabilizes and exports, 10-bit, I-Log and HLG through LUTs; the IMU axes and Dolby Vision export confirmed (contributors' clips; not yet run by the maintainer); open: lens guards, the HLG LUT's highlight roll-off, 8K 50 real time |
 | Insta360 ONE X2 | 360, one `.insv` per lens at 5.7K | [`insta360-one-x2.md`](insta360-one-x2.md) | experimental: 5.7K clips open from any of the take's files, stitch, stabilize and export (the maintainer's clips); open: a check against Insta360 Studio's stitch, a turning clip to confirm the IMU axes, Horizon lock tilting on some clips, the 4K / 3K one-file modes |
 | Insta360 X3 | 360, one `.insv` per lens at 5.7K | [`insta360-x3.md`](insta360-x3.md) | not yet; desk research, no clips |

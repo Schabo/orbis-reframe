@@ -742,9 +742,11 @@ trailing token `flag`. Each lens block ends in `w h lensType` (`10752 5376
     ours 0.31 / 0.57 px (0.36 / 0.58 on `_009`), Gyroflow's as written
     0.39–0.43 / 0.59–0.69 -- **worse**, on every clip. Its formula is
     built for lens 0 only (Gyroflow's lens profile takes the first
-    lens), and there ours is the better fit; on the X4 Air's seam
-    Gyroflow's takes about a fifth off ([`insta360-x4.md`](insta360-x4.md)),
-    which the chart doesn't bear out on the X5.
+    lens), and there ours is the better fit. On the X4 Air's seam
+    Gyroflow's takes about a fifth off, and with the lens centres moved it
+    fits both the seam and the camera's own stitch in three modes, where
+    ours fits the seam only ([`insta360-x4.md`](insta360-x4.md)); the
+    chart doesn't bear that out on the X5.
   - Lens 1 alone fits the chart better with its y-odd terms negated (idx
     17, 19, 21: 0.57 -> 0.36 / 0.41 / 0.47; Gyroflow's
     `mirror_coefficients_y`), but that isn't a better reading: at the

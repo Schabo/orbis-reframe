@@ -61,14 +61,15 @@ each is in its document in [`formats/`](formats/README.md).
   records ([`formats/insta360-x6.md`](formats/insta360-x6.md)).
 - **Insta360 X4**: probably close to working; confirm the calibration string,
   IMU flag and scaling, and axis map.
-- **Insta360 X4 Air**: one owner's log and one 6K clip of our own. It
-  opens, untested, on the general row of the Insta360 reader's table (what
-  the measured rows agree on, none of the X5's own corrections) and
-  stitches, but the lenses are ~1.4° apart at the seam, which nothing in
-  the file explains yet; the X5's IMU axes and timing hold; a split
-  recording's second part is refused. Needs its own row (6K lenses, like
-  the X6), the seam's cause (an 8K clip is the next reference), and how a
-  lens swap shows in the file
+- **Insta360 X4 Air**: one owner's log and three clips of our own (8K,
+  6K, 4K 50, one camera). They open, untested, on the general row of the
+  Insta360 reader's table (what the measured rows agree on, none of the
+  X5's own corrections), stitch and play from the proxy, but the lenses
+  are ~1.4° apart at the seam in every mode, which nothing in the file
+  explains yet; the X5's IMU axes and timing hold; a split recording's
+  second part is refused. Needs its own row (6K lenses, like the X6), the
+  seam's cause (a clip from a second X4 Air tells a fault of this camera
+  from the model's), and how a lens swap shows in the file
   ([`formats/insta360-x4.md`](formats/insta360-x4.md), with the X4).
 - **Insta360 ONE X2**: built, experimental (step 2 of the common camera
   model). Left: the stitch checked against Insta360 Studio's on the same

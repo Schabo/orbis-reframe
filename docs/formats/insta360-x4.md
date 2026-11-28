@@ -1,11 +1,11 @@
 # Insta360 X4 and X4 Air file format
 
-**Desk research (X4 2026-10-15, X4 Air 2026-11-24), and one X4 Air file
-(2026-11-27): no X4 file examined.** From public specs, Insta360's manuals,
-launch coverage and Gyroflow's telemetry-parser, set against what our code
-assumes, plus the log of one X4 Air owner who opened a clip with
-orbis-reframe 0.10.1, and one X4 Air 6K clip of our own (*The X4 Air file
-we have*, below). Written as differences from the X5
+**Desk research (X4 2026-10-15, X4 Air 2026-11-24), and three X4 Air files
+(2026-11-27 and 28): no X4 file examined.** From public specs, Insta360's
+manuals, launch coverage and Gyroflow's telemetry-parser, set against what
+our code assumes, plus the log of one X4 Air owner who opened a clip with
+orbis-reframe 0.10.1, and X4 Air clips of our own at 8K 30, 6K 30 and 4K 50
+(*The X4 Air files we have*, below). Written as differences from the X5
 ([`insta360-x5.md`](insta360-x5.md), "X5 §n" below). Markers as in
 [`README.md`](README.md).
 
@@ -34,8 +34,8 @@ cameras are in this document; where they differ, it says which.
   **no I-Log**. Insta360's X-series colour page lists both cameras among
   those without a log mode ("applying a LUT will not produce correct
   results") and the X4 Air's video as 8-bit.
-- ✅ X4 Air: our 6K clip is H.265 Main, **8-bit**, full range, BT.709
-  (ffprobe), as Insta360 says.
+- ✅ X4 Air: our clips (8K, 6K, 4K 50) are H.265 Main, **8-bit**, full
+  range, BT.709 (ffprobe), as Insta360 says.
 - ❓ Bit depth of the X4. Insta360 doesn't say; one third-party listing
   claims 10-bit. The app's GPU stitch takes 8-bit and 10-bit (see
   [`insta360-x6.md`](insta360-x6.md)).
@@ -43,8 +43,9 @@ cameras are in this document; where they differ, it says which.
   Active Wind Reduction, Stereo, 360 Direction Focus; X4 Air Auto Wind
   Noise Reduction, Voice Focus, Stereo, 360 Audio.
 - ⚠️ Per lens: 3840² at 8K, 2880² at 5.7K, 1920² at 4K (the X5's sizes),
-  and on the X4 Air **3008² at 6K** (6016×3008, the X6's 6K; ✅ two
-  3008² streams in our clip). The app names a
+  and on the X4 Air **3008² at 6K** (6016×3008, the X6's 6K). ✅ X4 Air:
+  two 3840² streams at 8K, 3008² at 6K, 1920² at 4K in our clips. The app
+  names a
   clip's mode by its lens size, from the model's row in
   `orbiscore::InsvModel`; neither camera has a row, so both get the general
   one, which names 3008² 6K as the X6's row does.
@@ -100,7 +101,8 @@ same chip powers the X4; the X5 adds two imaging chips).
   X5: lens 0's cy is 3831.2 in the 56-token string and 3845.4 in
   `offset_v3` (X5: within 4 px). Its 13-term block has the thin-prism
   terms the X5's has, and our reading of that block doesn't match
-  Gyroflow's (X5 §5.3).
+  Gyroflow's (X5 §5.3). The same strings and the same field 27 in our 8K,
+  6K and 4K clips: every mode is described against one 7424² window.
 - ❓ X4: which calibration string it carries. The X5 has the 56-token MEI
   string (`offset_v3`, X5 §5.3, field 111/112), which the native stitch
   needs; without it the clip won't open. telemetry-parser also knows
@@ -125,34 +127,37 @@ same chip powers the X4; the X5 adds two imaging chips).
   `pano_record_multi_track_order` (field 80: `TRACK0_STREAM10` reversed,
   `TRACK0_STREAM00` in order), and notes that an X4 writes no `stream_type`
   at all. Our reader takes track 0 as lens 0 on every Insta360 body and
-  reads neither field; the X5 and X6 stitch correctly that way. ❓ Whether
-  the X4 and X4 Air state the same order as the X5. Our X4 Air clip
-  stitches nearly right with track 0 as lens 0, but that doesn't settle
-  it: the two lenses' calibrations are so alike that the other order
-  would too, and exchanging the lenses' intrinsics changes the seam error
-  (*The X4 Air file we have*, below).
+  reads neither field; the X5 and X6 stitch correctly that way. ✅ The
+  X4 Air states the X5's layout in all three of our clips: field 79
+  (`pano_record_type`) 2, field 80 1 (`TRACK0_STREAM10`), field 131
+  (`stream_type`) 4, as the 16 X5 clips we checked write them. So the
+  order that holds on the X5 is the one stated here. ❓ The X4.
 
 ## IMU axes
 
 - 📖 Gyroflow maps the X4's IMU with `yzX`, the same as the X5 (X5 §6.3). So
   our measured X5 mapping `z,-x,-y` may hold; it must be measured again on
   an X4 clip, the same way.
-- ✅ X4 Air: the X5's `z,-x,-y` holds on our clip (`residual_stab
-  --diagnose`, 5-20.5 s). telemetry-parser's orientation table has no X4
-  Air entry (that library's default `Xyz` is an omission, not a
+- ✅ X4 Air: the X5's `z,-x,-y` holds, about every axis
+  (`residual_stab --diagnose`). telemetry-parser's orientation table has
+  no X4 Air entry (that library's default `Xyz` is an omission, not a
   measurement). Gravity is on raw x at rest (−1.00 g, the X5's sphere Y ←
-  −raw x). The image-against-gyro sweep picks the X5's permutation (two
-  axes swapped: correlation 1.61 -> 1.20 of 2). Under Direction lock the
-  forward view keeps 0.084 / 0.023 °/frame of yaw / pitch pan; with any
-  one axis's sign flipped, 10-13 times as much (the vertical in yaw, the
-  other two in pitch). Roll shows only through the stick's 2-7° tilt, so
-  a clip with deliberate turns about each axis would settle it fully.
+  −raw x). On the 6K clip (5-20.5 s) the image-against-gyro sweep picks
+  the X5's permutation (two axes swapped: correlation 1.61 -> 1.20 of 2),
+  and under Direction lock the forward view keeps 0.084 / 0.023 °/frame of
+  yaw / pitch pan; with any one axis's sign flipped, 10-13 times as much
+  (the vertical in yaw, the other two in pitch). That clip turns only
+  about the vertical; the 8K and 4K 50 clips turn the camera over (the
+  correction spans ±171° of roll and ±90° of pitch), and there `z,-x,-y`
+  leaves 0.17 / 0.14 (8K) and 0.11 / 0.07 (4K 50) °/frame, any one sign
+  flipped 3-8 times as much.
 - ✅ X4 Air capture timing: the X5's (field 28 + the model's −0.5 ms, each
   row at mid-exposure, X5 §7.1) holds. The app's per-clip sync fine-tune
   (`residual_stab --auto-sync`) finds −0.2 to 0.0 ms on three 7 s windows
   and on the turn, the image-against-gyro sweep −2.0 to −0.1 ms, at a
-  0.5 ms exposure. One exposure only, so the mid-exposure rule itself is
-  untested on this camera.
+  0.5 ms exposure; on the 8K 30 and 4K 50 clips −0.0 to +0.3 ms on three
+  7 s windows each, at 0.6-0.7 ms. Exposures that short leave the
+  mid-exposure rule itself untested on this camera.
 
 ## Split recordings (X4 Air)
 
@@ -168,54 +173,90 @@ same chip powers the X4; the X5 adds two imaging chips).
   than a refusal.
 - ❓ Nothing in the preview on the owner's machine even with the right GPU;
   the log shows only the part 2 refusal. ✅ A single-file X4 Air clip opens
-  and stitches: the owner's `…_039` alone, and our own 6K clip (below).
+  and stitches: the owner's `…_039` alone, and our own clips (below).
 
-## The X4 Air file we have
+## The X4 Air files we have
 
-`VID_20261127_141150_00_040.insv` + `LRV_…_01_040.lrv` (2026-11-27):
-6K 30, 20.7 s, firmware v1.2.7, bare lenses, H.265 8-bit in both lens
-streams; the `.lrv` is a 1664×832 H.264 proxy. Hand-held on a stick next to
-a building, still for 5 s, then turned about the vertical.
+One camera, firmware v1.2.7, bare lenses, H.265 8-bit in both lens streams,
+hand-held on a stick next to a building, with its `.lrv` proxy:
 
-- ✅ It opens on the general row, marked untested, and stitches on the GPU
-  (Vulkan decode, compute stitch) and the CPU; the export works.
-- ⚠️ **The seam is about 1.4° off.** Near content at the seam is doubled
-  (a window on a nearby wall: its edges and bars twice, also *across* the
-  seam, which parallax can't do there). Measured per 5° block of the seam over
-  8 frames, lens 1's picture is shifted against lens 0's all round the
-  seam: along it `1.38°·cos(az)`, across it `1.80°·sin(az)` (az: the
-  azimuth around lens 0's axis), 1.37° RMS after taking out what
-  parallax can do. The camera's own stitched thumbnail (record 2, X5 §4)
-  places lens 1 **1.51°** differently against lens 0 than our stitch, so
-  the camera knows a geometry we don't read.
+| File | Mode | Length | Motion |
+|---|---|---|---|
+| `VID_20261127_141150_00_040` | 6K 30 (3008²) | 20.7 s | still for 5 s, then turned about the vertical |
+| `VID_20261128_143347_00_042` | 8K 30 (3840²) | 22.1 s | turned over: upside down, on its side |
+| `VID_20261128_143309_00_041` | 4K 50 (1920²) | 22.3 s | as the 8K clip |
+
+The same scene in all three, so the 8K and 6K clips are the pair the seam
+needed.
+
+- ✅ Each opens on the general row, marked untested, and stitches on the
+  GPU (Vulkan decode, compute stitch) and the CPU; the 6K clip's export
+  works.
+- ✅ The `.lrv` proxy is 1664×832 H.264, the two lenses side by side at
+  832² each, at 30 fps for the 30 fps clips and **25 fps for the 50 fps
+  one** (the X5's 60 and 120 fps clips have 30 fps proxies). Playback from
+  the proxy lines up with the full file in all three modes
+  (`stitch_source_smoke --proxy`: PSNR highest unshifted); at 50 fps each
+  frame shows the proxy's frame at or before its time.
+- ⚠️ **The seam is about 1.4° off, in every mode.** Near content at the
+  seam is doubled (a window on a nearby wall: its edges and bars twice,
+  also *across* the seam, which parallax can't do there). Measured per 5°
+  block of the seam over 8 frames of the 6K clip, lens 1's picture is
+  shifted against lens 0's all round the seam: along it `1.38°·cos(az)`,
+  across it `1.80°·sin(az)` (az: the azimuth around lens 0's axis),
+  1.37° RMS after taking out what parallax can do. The app's seam
+  measurement reads 1.39° at 8K, 1.32° at 6K and 1.37° at 4K 50. Three
+  pictures of the one 7424² window at three scales, with one error: it
+  isn't in how a mode's picture maps onto the calibration.
+- The camera's own stitched thumbnail (record 2, X5 §4) places lens 1
+  1.50-1.57° differently against lens 0 than our stitch does, in all three
+  clips, so the camera knows a geometry we don't read.
 - What it isn't (each tried against the seam): the radial models
   exchanged as on the X5; `offset_v3` instead of the 56-token string; cx
-  and cy transposed or mirrored; field 27. Reading the 13-term block as
-  Gyroflow does (X5 §5.3) takes about a fifth off (1.37 -> 1.09°). The two
-  lenses' intrinsics exchanged removes the shift along the seam but leaves
-  a 1.4° tilt.
-- What fits: the lens centres moved, lens 0 by (−8, +61) and lens 1 by
-  (+3, −12) calibration-frame pixels (~24 and ~5 px in the 3008² picture):
-  the seam then agrees to 0.07° and our stitch matches the thumbnail to
-  0.14°. The seam can't tell a lens-0 centre error from a tilt of the
-  lenses, so this is a description, not the cause; nothing in the file
-  gives these numbers.
-- The app's per-clip seam fit (the old stitcher) measures the offset as
-  1.29° and takes it to 0.72°, ending at its bounds (lens 1 yaw −2.5°,
-  centre −1 %): a fine-tune of lens 1 can't take out this much.
-- ⚠️ Against the thumbnail our stitch also makes lens 0's picture 0.59 %
-  too large and lens 1's 0.44 % too small: the X5's sign and size, where
-  the strings carry each lens's radial model in the other's place (X5
-  §5.3). Not yet applied to the X4 Air.
-- ❓ The cause. The next file to look at is an **8K clip from the same
-  camera** (3840², at the calibration's own scale): a clean seam there
-  would put it in how the 6K window maps onto the calibration.
+  and cy transposed or mirrored; field 27; the mode (above); the track
+  order (*Trailer*). Reading the 13-term block as Gyroflow does takes
+  about a fifth off (1.37 -> 1.09°); at the seam that block's
+  decentering and thin-prism terms move the picture by about 7
+  calibration-frame pixels, where about 80 are missing. The two lenses'
+  intrinsics exchanged removes the shift along the seam but leaves a 1.4°
+  tilt. No rotation of lens 1 takes out the shift along the seam (a
+  rotation moves the seam's points across it, or all along it alike),
+  and the thumbnail's rotation applied to lens 1 leaves 1.0-1.1°.
+- What fits: **lens 0's centre** moved by about (−13, +83) calibration-frame
+  pixels (~1.1 % of the lens width): fitted on each clip on its own,
+  (−13, +82) at 6K, (−17, +84) at 4K 50 and (−12, +84) at 8K take the seam
+  to 0.10, 0.13 and 0.12°. Lens 1's centre alone gets no closer than
+  1.01°, one shift common to both lenses no closer than 1.05°. But that
+  shift overshoots the thumbnail: lens 1 is then 0.65-0.67° off the
+  camera's stitch the other way.
+- What fits both: the 13-term block **read as Gyroflow reads it** and the
+  centres moved by lens 0 (−8, +61), lens 1 (+3, −12), fitted on the 6K
+  clip: the seam 0.08° in all three modes, and lens 1 against lens 0
+  0.15-0.21° from the camera's thumbnail (radial scales still about
+  ∓0.4 %). Gyroflow's reading alone leaves 1.07-1.11° at the seam. On the
+  X5 the same reading scores worse against a chart than ours (X5 §5.3), so
+  this doesn't settle the reading; with the X4 Air's lens type it agrees
+  with two independent measures where ours doesn't. The seam can't tell a
+  lens-0 centre error from a tilt of the lenses, so the shifts describe
+  the error, not its cause; nothing in the file gives these numbers.
+- The app's per-clip seam fit (the old stitcher) can't take it out: it
+  fine-tunes lens 1 only, within bounds, and ends at them on all three
+  clips (lens 1 yaw −2.5°, centre −1 %), at 0.72-0.88°.
+- ⚠️ Against the thumbnail our stitch also makes lens 0's picture about
+  0.5 % too large and lens 1's 0.5 % too small, in all three clips: the
+  X5's sign and size, where the strings carry each lens's radial model in
+  the other's place (X5 §5.3). Not yet applied to the X4 Air.
+- ❓ The cause. One clip from a second X4 Air would tell a fault of this
+  camera's calibration from something every X4 Air does. The X4 Air's
+  lenses are replaceable, so whether a lens of this camera was ever
+  changed matters too: a calibration from before a swap would describe the
+  old lens.
 
 ## Modes and sample clips
 
 All the modes 📖 from Insta360's shooting specs, product pages and launch
-coverage (Sources). We have no file from either camera. The status words
-are the X5's (X5 §3.4).
+coverage (Sources). We have no X4 file and three X4 Air files (*The X4 Air
+files we have*). The status words are the X5's (X5 §3.4).
 
 ### X4
 
@@ -243,9 +284,9 @@ are the X5's (X5 §3.4).
 
 | Mode | Spec | Files | Our clips | Status |
 |---|---|---|---|---|
-| 360 Video 8K | 7680×3840, 30 / 25 / 24; Active HDR up to 8K 30 | `VID_…_00_` `.insv` + `.lrv` | none | **wanted first**: 3840² lenses, the calibration string, the IMU |
-| 360 Video 6K | 6016×3008, 50 / 48 / 30 / 25 / 24 | as above | one at 30, bare (above) | **partial**: opens and stitches; the seam is ~1.4° off (above); at 50 wanted |
-| 360 Video 4K | 3840×1920, 50 / 48 / 30 / 25 / 24 (one retailer says 60) | as above | one owner's take at 30, split in two files (log only) | **wanted**: a short one-file clip, and the split take's files |
+| 360 Video 8K | 7680×3840, 30 / 25 / 24; Active HDR up to 8K 30 | `VID_…_00_` `.insv` + `.lrv` | one at 30, bare, turned over (above) | **partial**: opens, stitches, plays from the proxy; the seam is ~1.4° off, as at 6K (above) |
+| 360 Video 6K | 6016×3008, 50 / 48 / 30 / 25 / 24 | as above | one at 30, bare (above) | **partial**: as 8K; at 50 wanted |
+| 360 Video 4K | 3840×1920, 50 / 48 / 30 / 25 / 24 (one retailer says 60) | as above | one at 50, bare, turned over (above); one owner's take at 30, split in two files (log only) | **partial**: as 8K, the proxy at 25 fps; the split take's files wanted |
 | Filters Vivid / Flat | | as above | none | wanted, low |
 | H.264 encoding | | as above | none | **wanted**: one clip in each codec |
 | InstaFrame | 360 6K + flat 1080p, 30 / 25 / 24 | `.insv` (360) + `.mp4` (flat) | none | wanted |
@@ -258,18 +299,20 @@ are the X5's (X5 §3.4).
 | Me Mode | 4K 3840×2160 30 / 25 / 24, 2.7K 2720×1536 60…24, 1080p 120 / 100 | `.insv` | none | wanted |
 | 360 Photo (HDR, Interval, Starlapse, Burst; PureShot, RAW) | 29 MP 7680×3840 | `.insp`; `.jpg` with in-camera stitching; `.dng` with RAW | none | wanted, low |
 | Replaceable lenses | | | none | **a clip before and after a lens swap**: does the calibration change, is there a profile per lens |
-| IMU axes | | | the 6K clip (turns about the vertical, a stick's shake) | **partial**: the X5's map and timing hold (above); a clip with deliberate turns about each axis, for roll |
+| IMU axes | | | all three clips; the 8K and 4K ones turn about every axis | **enough**: the X5's map and timing hold (above) |
+| A second camera | | | none | **wanted**: any clip from another X4 Air, to tell the seam's cause (above) |
 
 The most useful first set, 10–30 s each, straight from the card with the
 whole folder (`DCIM` and `MISC`), as in "Sample clips wanted"
 ([`README.md`](README.md#sample-clips-wanted)):
 
-1. 8K 30, Standard, hand-held or on a stick, with slow deliberate turns
-   left-right, up-down and a roll. On the X4 Air also the reference for
-   the 6K seam (above): ideally the same scene, at 8K and at 6K.
-2. One clip in each other 360 resolution (X4: 5.7K 60, 4K 100; X4 Air: 6K
-   50, 4K 50).
-3. A take just over 30 minutes, both parts (any resolution; 4K fills the
+1. X4: 8K 30, Standard, hand-held or on a stick, with slow deliberate
+   turns left-right, up-down and a roll. (X4 Air: we have it.)
+2. X4 Air: any clip from a second camera, with something within a metre
+   or two near the seam (the seam, above).
+3. One clip in each other 360 resolution (X4: 5.7K 60, 4K 100; X4 Air: 6K
+   50).
+4. A take just over 30 minutes, both parts (any resolution; 4K fills the
    card least).
 
 ## Sources
